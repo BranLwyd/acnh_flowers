@@ -4,6 +4,8 @@ package flower
 
 import (
 	"fmt"
+	"strconv"
+	"strings"
 )
 
 const (
@@ -63,6 +65,26 @@ func (s Species3) ParseGenotype(genotype string) (Genotype, error) {
 
 func (s Species3) RenderGenotype(g Genotype) string {
 	return fmt.Sprintf("%s%s%s", s.gene0[g.gene0()], s.gene1[g.gene1()], s.gene2[g.gene2()])
+}
+
+func (s Species3) RenderGeneticDistribution3(gd GeneticDistribution3) string {
+	var sb strings.Builder
+	written := false
+	sb.WriteString("{")
+	for g, p := range gd.dist {
+		if p == 0 {
+			continue
+		}
+		if written {
+			sb.WriteString(", ")
+		}
+		sb.WriteString(strconv.FormatUint(p, 10))
+		sb.WriteString(":")
+		sb.WriteString(s.RenderGenotype(Genotype(g)))
+		written = true
+	}
+	sb.WriteString("}")
+	return sb.String()
 }
 
 // Genotype represents a specific set of genes for a species, e.g. RrwwYY.
