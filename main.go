@@ -10,62 +10,61 @@ import (
 
 func main() {
 	// Initial flowers.
-	hyacinths := flower.Hyacinths()
-	seedWhite := must(hyacinths.ParseGenotype("rryyWw")).ToGeneticDistribution()
-	seedYellow := must(hyacinths.ParseGenotype("rrYYWW")).ToGeneticDistribution()
-	seedRed := must(hyacinths.ParseGenotype("RRyyWw")).ToGeneticDistribution()
-	blueHyacinthsA := must(hyacinths.ParseGenotype("rryyww")).ToGeneticDistribution()
-	blueHyacinthsB := must(hyacinths.ParseGenotype("RRYyWW")).ToGeneticDistribution()
+	roses := flower.Roses()
+	seedWhite := must(roses.ParseGenotype("rryyWwss")).ToGeneticDistribution()
+	seedYellow := must(roses.ParseGenotype("rrYYWWss")).ToGeneticDistribution()
+	seedRed := must(roses.ParseGenotype("RRyyWWSs")).ToGeneticDistribution()
+	blueRoses := must(roses.ParseGenotype("RRYYwwss")).ToGeneticDistribution()
 
 	// Breeding tests.
 	tests := map[string]breedgraph.Test{
 		"":       breedgraph.NoTest,
-		"Blue":   breedgraph.PhenotypeTest(hyacinths, "Blue"),
-		"Orange": breedgraph.PhenotypeTest(hyacinths, "Orange"),
-		"Pink":   breedgraph.PhenotypeTest(hyacinths, "Pink"),
-		"Purple": breedgraph.PhenotypeTest(hyacinths, "Purple"),
-		"Red":    breedgraph.PhenotypeTest(hyacinths, "Red"),
-		"White":  breedgraph.PhenotypeTest(hyacinths, "White"),
-		"Yellow": breedgraph.PhenotypeTest(hyacinths, "Yellow"),
+		"Black":  breedgraph.PhenotypeTest(roses, "Black"),
+		"Blue":   breedgraph.PhenotypeTest(roses, "Blue"),
+		"Orange": breedgraph.PhenotypeTest(roses, "Orange"),
+		"Pink":   breedgraph.PhenotypeTest(roses, "Pink"),
+		"Purple": breedgraph.PhenotypeTest(roses, "Purple"),
+		"Red":    breedgraph.PhenotypeTest(roses, "Red"),
+		"White":  breedgraph.PhenotypeTest(roses, "White"),
+		"Yellow": breedgraph.PhenotypeTest(roses, "Yellow"),
 	}
 
 	g := breedgraph.NewGraph(tests, []flower.GeneticDistribution{seedWhite, seedYellow, seedRed})
 	for i := 0; i < 3; i++ {
-		fmt.Fprintf(os.Stderr, "Beginning graph expansion step %d\n", i+1)
+		fmt.Fprintf(os.Stderr, "Beginning graph expansion step %d...\n", i+1)
 		g.Expand()
 	}
 
 	// Find candidate distribution, or fail out if this is impossible.
-	var blueHyacinths breedgraph.Vertex
+	var candidate breedgraph.Vertex
 	g.VisitVertices(func(v breedgraph.Vertex) {
 		// Is this a suitable candidate?
 		for g, p := range v.Value() {
 			if p == 0 {
 				continue
 			}
-			if hyacinths.Phenotype(flower.Genotype(g)) != "Blue" {
+			if roses.Phenotype(flower.Genotype(g)) != "Blue" {
 				return
 			}
 		}
 
 		// It is a suitable candidate. Is it the cheapeast candidate we've found so far?
-		if blueHyacinths.IsZero() || v.PathCost() < blueHyacinths.PathCost() {
-			blueHyacinths = v
+		if candidate.IsZero() || v.PathCost() < candidate.PathCost() {
+			candidate = v
 		}
 	})
-	if blueHyacinths.IsZero() {
-		fmt.Fprintf(os.Stderr, "No blue hyacinths possible.\n")
+	if candidate.IsZero() {
+		fmt.Fprintf(os.Stderr, "No blue roses possible.\n")
 		os.Exit(1)
 	}
 
 	// Print result.
 	names := map[flower.GeneticDistribution]string{}
-	names[seedWhite] = "Seed White (rryyWw)"
-	names[seedYellow] = "Seed Yellow (rrYYWW)"
-	names[seedRed] = "Seed Red (RRyyWw)"
-	names[blueHyacinthsA] = "Blue Hyacinths (rryyww)"
-	names[blueHyacinthsB] = "Blue Hyacinths (RRYyWW)"
-	printDotGraphPathTo(hyacinths, blueHyacinths, names)
+	names[seedWhite] = "Seed White (rryyWwss)"
+	names[seedYellow] = "Seed Yellow (rrYYWWss)"
+	names[seedRed] = "Seed Red (RRyyWWSs)"
+	names[blueRoses] = "Blue Roses (RRYYwwss)"
+	printDotGraphPathTo(roses, candidate, names)
 }
 
 func printGraph(s flower.Species, g *breedgraph.Graph, names map[flower.GeneticDistribution]string) {
