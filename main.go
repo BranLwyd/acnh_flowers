@@ -133,8 +133,8 @@ func printGraph(s flower.Species, g *breedgraph.Graph, names map[flower.GeneticD
 	})
 
 	fmt.Println("Lineage:")
-	g.VisitEdges(func(pa, pb, c flower.GeneticDistribution, test string) {
-		fmt.Printf("  %s and %s make %s [test = %s]\n", name(pa), name(pb), name(c), test)
+	g.VisitEdges(func(pa, pb, c flower.GeneticDistribution, test string, cost float64) {
+		fmt.Printf("  %s and %s make %s [test = %q, cost = %.02f]\n", name(pa), name(pb), name(c), test, cost)
 	})
 
 }
@@ -158,8 +158,8 @@ func printDotGraph(s flower.Species, g *breedgraph.Graph, names map[flower.Genet
 	fmt.Println()
 
 	// Print edges.
-	g.VisitEdges(func(pa, pb, c flower.GeneticDistribution, test string) {
-		fmt.Printf(`  {"%s" "%s"} -> "%s" [headlabel = "%s"]`, name(pa), name(pb), name(c), test)
+	g.VisitEdges(func(pa, pb, c flower.GeneticDistribution, test string, cost float64) {
+		fmt.Printf(`  {"%s" "%s"} -> "%s" [headlabel="%s"]`, name(pa), name(pb), name(c), edgeLabel(test, cost))
 		fmt.Println()
 	})
 	fmt.Println("}")
@@ -180,11 +180,18 @@ func printDotGraphPathTo(s flower.Species, g *breedgraph.Graph, target flower.Ge
 	g.VisitPathTo(target, func(gd flower.GeneticDistribution) {
 		fmt.Printf(`  "%s"`, name(gd))
 		fmt.Println()
-	}, func(pa, pb, c flower.GeneticDistribution, test string) {
-		fmt.Printf(`  {"%s" "%s"} -> "%s" [headlabel = "%s"]`, name(pa), name(pb), name(c), test)
+	}, func(pa, pb, c flower.GeneticDistribution, test string, cost float64) {
+		fmt.Printf(`  {"%s" "%s"} -> "%s" [headlabel="%s"]`, name(pa), name(pb), name(c), edgeLabel(test, cost))
 		fmt.Println()
 	})
 	fmt.Println("}")
+}
+
+func edgeLabel(test string, cost float64) string {
+	if test != "" {
+		return fmt.Sprintf("%s(%.2f)", test, cost)
+	}
+	return fmt.Sprintf("%.02f", cost)
 }
 
 func must(g flower.Genotype, err error) flower.Genotype {

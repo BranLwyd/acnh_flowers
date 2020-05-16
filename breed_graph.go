@@ -19,6 +19,7 @@ type edge struct {
 	succ *vertex
 
 	testName string
+	cost     float64
 }
 
 type vertex struct {
@@ -53,23 +54,29 @@ func (g *Graph) Expand() {
 			gd := pa.gd.Breed(pb.gd)
 
 			for testName, test := range g.tests {
-				testedGD, _ := test(gd)
-				if testedGD.IsZero() {
+				gd, cost := test(gd)
+				if gd.IsZero() {
 					// Test can't be applied to this distribution.
 					continue
 				}
-				if _, ok := g.vertMap[testedGD]; ok {
-					// Update lowest-cost once costing is added.
+				e := &edge{pred: [2]*vertex{pa, pb}, testName: testName, cost: cost}
+				g.edges = append(g.edges, e)
+
+				if v, ok := g.vertMap[gd]; ok {
+					// This vertex already exists. Update lowest-cost if necessary.
+					e.succ = v
+					oldPathCost, newPathCost := v.pathCost(), e.pathCost()
+					if newPathCost < oldPathCost {
+						v.pred = e
+					}
 					continue
 				}
 
-				v := &vertex{gd: testedGD}
-				e := &edge{pred: [2]*vertex{pa, pb}, succ: v, testName: testName}
-				v.pred = e
-
+				// This vertex does not yet exist in the graph.
+				v := &vertex{gd: gd, pred: e}
+				e.succ = v
 				g.verts = append(g.verts, v)
-				g.vertMap[testedGD] = v
-				g.edges = append(g.edges, e)
+				g.vertMap[gd] = v
 			}
 		}
 	}
@@ -82,13 +89,13 @@ func (g *Graph) VisitVertices(f func(flower.GeneticDistribution)) {
 	}
 }
 
-func (g *Graph) VisitEdges(f func(parentA, parentB, child flower.GeneticDistribution, test string)) {
+func (g *Graph) VisitEdges(f func(parentA, parentB, child flower.GeneticDistribution, test string, cost float64)) {
 	for _, e := range g.edges {
-		f(e.pred[0].gd, e.pred[1].gd, e.succ.gd, e.testName)
+		f(e.pred[0].gd, e.pred[1].gd, e.succ.gd, e.testName, e.cost)
 	}
 }
 
-func (g *Graph) VisitPathTo(gd flower.GeneticDistribution, vertexVisitor func(flower.GeneticDistribution), edgeVisitor func(parentA, parentB, child flower.GeneticDistribution, test string)) {
+func (g *Graph) VisitPathTo(gd flower.GeneticDistribution, vertexVisitor func(flower.GeneticDistribution), edgeVisitor func(parentA, parentB, child flower.GeneticDistribution, test string, cost float64)) {
 	v, ok := g.vertMap[gd]
 	if !ok {
 		return
@@ -97,34 +104,69 @@ func (g *Graph) VisitPathTo(gd flower.GeneticDistribution, vertexVisitor func(fl
 	var verts []*vertex
 	var edges []*edge
 
-	handled := map[flower.GeneticDistribution]struct{}{}
-	stk := []*vertex{v}
-
-	for len(stk) != 0 {
-		var v *vertex
-		stk, v = stk[:len(stk)-1], stk[len(stk)-1]
-
-		if _, ok := handled[v.gd]; ok {
-			continue
+	v.visitPath(func(x interface{}) {
+		switch x := x.(type) {
+		case *vertex:
+			verts = append(verts, x)
+		case *edge:
+			edges = append(edges, x)
 		}
-		handled[v.gd] = struct{}{}
-
-		verts = append(verts, v)
-		if v.pred != nil {
-			edges = append(edges, v.pred)
-			stk = append(stk, v.pred.pred[0], v.pred.pred[1])
-		}
-	}
+	})
 
 	for _, v := range verts {
 		vertexVisitor(v.gd)
 	}
 	for _, e := range edges {
-		edgeVisitor(
-			e.pred[0].gd,
-			e.pred[1].gd,
-			e.succ.gd,
-			e.testName)
+		edgeVisitor(e.pred[0].gd, e.pred[1].gd, e.succ.gd, e.testName, e.cost)
+	}
+}
+
+func (e *edge) pathCost() float64 {
+	var cost float64
+	e.visitPath(func(x interface{}) {
+		if e, ok := x.(*edge); ok {
+			cost += e.cost
+		}
+	})
+	return cost
+}
+
+func (e *edge) visitPath(f func(interface{})) {
+	stk := []*edge{e}
+	handled := map[*edge]struct{}{}
+	for len(stk) != 0 {
+		var e *edge
+		stk, e = stk[:len(stk)-1], stk[len(stk)-1]
+		if _, ok := handled[e]; ok {
+			continue
+		}
+		handled[e] = struct{}{}
+
+		f(e)
+
+		f(e.pred[0])
+		if e.pred[0].pred != nil {
+			stk = append(stk, e.pred[0].pred)
+		}
+
+		f(e.pred[1])
+		if e.pred[1].pred != nil {
+			stk = append(stk, e.pred[1].pred)
+		}
+	}
+}
+
+func (v *vertex) pathCost() float64 {
+	if v.pred == nil {
+		return 0
+	}
+	return v.pred.pathCost()
+}
+
+func (v *vertex) visitPath(f func(interface{})) {
+	f(v)
+	if v.pred != nil {
+		v.pred.visitPath(f)
 	}
 }
 
