@@ -30,14 +30,16 @@ func main() {
 	}
 
 	g := breedgraph.NewGraph(tests, []flower.GeneticDistribution{seedWhite, seedYellow, seedRed})
-	g.Expand()
-	g.Expand()
+	for i := 0; i < 3; i++ {
+		fmt.Fprintf(os.Stderr, "Beginning graph expansion step %d\n", i+1)
+		g.Expand()
+	}
 
 	// Find candidate distribution, or fail out if this is impossible.
-	var blueHyacinths flower.GeneticDistribution
-	cnt := 0
-	g.VisitVertices(func(gd flower.GeneticDistribution) {
-		for g, p := range gd {
+	var blueHyacinths breedgraph.Vertex
+	g.VisitVertices(func(v breedgraph.Vertex) {
+		// Is this a suitable candidate?
+		for g, p := range v.Value() {
 			if p == 0 {
 				continue
 			}
@@ -45,8 +47,11 @@ func main() {
 				return
 			}
 		}
-		blueHyacinths = gd
-		cnt++
+
+		// It is a suitable candidate. Is it the cheapeast candidate we've found so far?
+		if blueHyacinths.IsZero() || v.PathCost() < blueHyacinths.PathCost() {
+			blueHyacinths = v
+		}
 	})
 	if blueHyacinths.IsZero() {
 		fmt.Fprintf(os.Stderr, "No blue hyacinths possible.\n")
@@ -60,62 +65,8 @@ func main() {
 	names[seedRed] = "Seed Red (RRyyWw)"
 	names[blueHyacinthsA] = "Blue Hyacinths (rryyww)"
 	names[blueHyacinthsB] = "Blue Hyacinths (RRYyWW)"
-	printDotGraphPathTo(hyacinths, g, blueHyacinths, names)
+	printDotGraphPathTo(hyacinths, blueHyacinths, names)
 }
-
-/*
-func main() {
-	// Initial flowers.
-	mums := flower.Mums()
-	seedWhite := must(mums.ParseGenotype("rryyWw")).ToGeneticDistribution()
-	seedYellow := must(mums.ParseGenotype("rrYYWW")).ToGeneticDistribution()
-	seedRed := must(mums.ParseGenotype("RRyyWW")).ToGeneticDistribution()
-	greenMumsA := must(mums.ParseGenotype("RRYYWw")).ToGeneticDistribution()
-	greenMumsB := must(mums.ParseGenotype("RRYYWW")).ToGeneticDistribution()
-
-	// Breeding tests.
-	tests := map[string]breedgraph.Test{
-		"":       breedgraph.NoTest,
-		"Green":  breedgraph.PhenotypeTest(mums, "Green"),
-		"Pink":   breedgraph.PhenotypeTest(mums, "Pink"),
-		"Purple": breedgraph.PhenotypeTest(mums, "Purple"),
-		"Red":    breedgraph.PhenotypeTest(mums, "Red"),
-		"White":  breedgraph.PhenotypeTest(mums, "White"),
-		"Yellow": breedgraph.PhenotypeTest(mums, "Yellow"),
-	}
-
-	g := breedgraph.NewGraph(tests, []flower.GeneticDistribution{seedWhite, seedYellow, seedRed})
-	g.Expand()
-	g.Expand()
-
-	// Find candidate distribution, or fail out if this is impossible.
-	var greenMums flower.GeneticDistribution
-	g.VisitVertices(func(gd flower.GeneticDistribution) {
-		for g, p := range gd {
-			if p == 0 {
-				continue
-			}
-			if mums.Phenotype(flower.Genotype(g)) != "Green" {
-				return
-			}
-		}
-		greenMums = gd
-	})
-	if greenMums.IsZero() {
-		fmt.Fprintf(os.Stderr, "No green mums possible.\n")
-		os.Exit(1)
-	}
-
-	// Print result.
-	names := map[flower.GeneticDistribution]string{}
-	names[seedWhite] = "Seed White (rryyWw)"
-	names[seedYellow] = "Seed Yellow (rrYYWW)"
-	names[seedRed] = "Seed Red (RRyyWW)"
-	names[greenMumsA] = "Green Mums (RRYYWw)"
-	names[greenMumsB] = "Green Mums (RRYYWW)"
-	printDotGraphPathTo(mums, g, greenMums, names)
-}
-*/
 
 func printGraph(s flower.Species, g *breedgraph.Graph, names map[flower.GeneticDistribution]string) {
 	name := func(gd flower.GeneticDistribution) string {
@@ -128,13 +79,13 @@ func printGraph(s flower.Species, g *breedgraph.Graph, names map[flower.GeneticD
 	}
 
 	fmt.Println("All flowers:")
-	g.VisitVertices(func(gd flower.GeneticDistribution) {
-		fmt.Printf("  %s\n", name(gd))
+	g.VisitVertices(func(v breedgraph.Vertex) {
+		fmt.Printf("  %s\n", name(v.Value()))
 	})
 
 	fmt.Println("Lineage:")
-	g.VisitEdges(func(pa, pb, c flower.GeneticDistribution, test string, cost float64) {
-		fmt.Printf("  %s and %s make %s [test = %q, cost = %.02f]\n", name(pa), name(pb), name(c), test, cost)
+	g.VisitEdges(func(e breedgraph.Edge) {
+		fmt.Printf("  %s and %s make %s [test = %q, cost = %.02f]\n", name(e.FirstParent().Value()), name(e.SecondParent().Value()), name(e.Child().Value()), e.TestName(), e.EdgeCost())
 	})
 
 }
@@ -151,21 +102,21 @@ func printDotGraph(s flower.Species, g *breedgraph.Graph, names map[flower.Genet
 
 	// Print vertices.
 	fmt.Println("digraph {")
-	g.VisitVertices(func(gd flower.GeneticDistribution) {
-		fmt.Printf(`  "%s"`, name(gd))
+	g.VisitVertices(func(v breedgraph.Vertex) {
+		fmt.Printf(`  "%s"`, name(v.Value()))
 		fmt.Println()
 	})
 	fmt.Println()
 
 	// Print edges.
-	g.VisitEdges(func(pa, pb, c flower.GeneticDistribution, test string, cost float64) {
-		fmt.Printf(`  {"%s" "%s"} -> "%s" [headlabel="%s"]`, name(pa), name(pb), name(c), edgeLabel(test, cost))
+	g.VisitEdges(func(e breedgraph.Edge) {
+		fmt.Printf(`  {"%s" "%s"} -> "%s" [headlabel="%s"]`, name(e.FirstParent().Value()), name(e.SecondParent().Value()), name(e.Child().Value()), edgeLabel(e.TestName(), e.EdgeCost()))
 		fmt.Println()
 	})
 	fmt.Println("}")
 }
 
-func printDotGraphPathTo(s flower.Species, g *breedgraph.Graph, target flower.GeneticDistribution, names map[flower.GeneticDistribution]string) {
+func printDotGraphPathTo(s flower.Species, v breedgraph.Vertex, names map[flower.GeneticDistribution]string) {
 	name := func(gd flower.GeneticDistribution) string {
 		if name, ok := names[gd]; ok {
 			return name
@@ -177,11 +128,11 @@ func printDotGraphPathTo(s flower.Species, g *breedgraph.Graph, target flower.Ge
 
 	// Print vertices.
 	fmt.Println("digraph {")
-	g.VisitPathTo(target, func(gd flower.GeneticDistribution) {
-		fmt.Printf(`  "%s"`, name(gd))
+	v.VisitPathTo(func(v breedgraph.Vertex) {
+		fmt.Printf(`  "%s"`, name(v.Value()))
 		fmt.Println()
-	}, func(pa, pb, c flower.GeneticDistribution, test string, cost float64) {
-		fmt.Printf(`  {"%s" "%s"} -> "%s" [headlabel="%s"]`, name(pa), name(pb), name(c), edgeLabel(test, cost))
+	}, func(e breedgraph.Edge) {
+		fmt.Printf(`  {"%s" "%s"} -> "%s" [headlabel="%s"]`, name(e.FirstParent().Value()), name(e.SecondParent().Value()), name(e.Child().Value()), edgeLabel(e.TestName(), e.EdgeCost()))
 		fmt.Println()
 	})
 	fmt.Println("}")

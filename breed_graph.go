@@ -14,18 +14,17 @@ type Graph struct {
 	edges []*edge
 }
 
+type vertex struct {
+	gd   flower.GeneticDistribution
+	pred *edge
+}
+
 type edge struct {
 	pred [2]*vertex
 	succ *vertex
 
 	testName string
 	cost     float64
-}
-
-type vertex struct {
-	gd flower.GeneticDistribution
-
-	pred *edge
 }
 
 func NewGraph(tests map[string]Test, initialFlowers []flower.GeneticDistribution) *Graph {
@@ -83,41 +82,15 @@ func (g *Graph) Expand() {
 	g.vertFrontier = initialVertCnt
 }
 
-func (g *Graph) VisitVertices(f func(flower.GeneticDistribution)) {
+func (g *Graph) VisitVertices(f func(Vertex)) {
 	for _, v := range g.verts {
-		f(v.gd)
+		f(Vertex{v})
 	}
 }
 
-func (g *Graph) VisitEdges(f func(parentA, parentB, child flower.GeneticDistribution, test string, cost float64)) {
+func (g *Graph) VisitEdges(f func(Edge)) {
 	for _, e := range g.edges {
-		f(e.pred[0].gd, e.pred[1].gd, e.succ.gd, e.testName, e.cost)
-	}
-}
-
-func (g *Graph) VisitPathTo(gd flower.GeneticDistribution, vertexVisitor func(flower.GeneticDistribution), edgeVisitor func(parentA, parentB, child flower.GeneticDistribution, test string, cost float64)) {
-	v, ok := g.vertMap[gd]
-	if !ok {
-		return
-	}
-
-	var verts []*vertex
-	var edges []*edge
-
-	v.visitPath(func(x interface{}) {
-		switch x := x.(type) {
-		case *vertex:
-			verts = append(verts, x)
-		case *edge:
-			edges = append(edges, x)
-		}
-	})
-
-	for _, v := range verts {
-		vertexVisitor(v.gd)
-	}
-	for _, e := range edges {
-		edgeVisitor(e.pred[0].gd, e.pred[1].gd, e.succ.gd, e.testName, e.cost)
+		f(Edge{e})
 	}
 }
 
@@ -196,3 +169,41 @@ func PhenotypeTest(s flower.Species, phenotype string) Test {
 		return rslt.Reduce(), float64(totalChances) / float64(succChances)
 	}
 }
+
+type Vertex struct{ v *vertex }
+
+func (v Vertex) IsZero() bool                       { return v.v == nil }
+func (v Vertex) Value() flower.GeneticDistribution  { return v.v.gd }
+func (v Vertex) BestPredecessor() (_ Edge, ok bool) { return Edge{v.v.pred}, v.v.pred != nil }
+func (v Vertex) PathCost() float64                  { return v.v.pathCost() }
+
+func (v Vertex) VisitPathTo(vertexVisitor func(Vertex), edgeVisitor func(Edge)) {
+	var verts []*vertex
+	var edges []*edge
+
+	v.v.visitPath(func(x interface{}) {
+		switch x := x.(type) {
+		case *vertex:
+			verts = append(verts, x)
+		case *edge:
+			edges = append(edges, x)
+		}
+	})
+
+	for _, v := range verts {
+		vertexVisitor(Vertex{v})
+	}
+	for _, e := range edges {
+		edgeVisitor(Edge{e})
+	}
+}
+
+type Edge struct{ e *edge }
+
+func (e Edge) IsZero() bool         { return e.e == nil }
+func (e Edge) FirstParent() Vertex  { return Vertex{e.e.pred[0]} }
+func (e Edge) SecondParent() Vertex { return Vertex{e.e.pred[1]} }
+func (e Edge) Child() Vertex        { return Vertex{e.e.succ} }
+func (e Edge) TestName() string     { return e.e.testName }
+func (e Edge) EdgeCost() float64    { return e.e.cost }
+func (e Edge) PathCost() float64    { return e.e.pathCost() }
