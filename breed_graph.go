@@ -136,7 +136,7 @@ var (
 
 func PhenotypeTest(s flower.Species, phenotype string) Test {
 	return func(gd flower.GeneticDistribution) (flower.GeneticDistribution, float64) {
-		var rslt flower.GeneticDistribution = gd
+		rslt := gd
 		var succChances, totalChances uint64
 		for g, p := range rslt {
 			g := flower.Genotype(g)
@@ -151,6 +151,6 @@ func PhenotypeTest(s flower.Species, phenotype string) Test {
 			// This test can't be applied.
 			return flower.GeneticDistribution{}, 0
 		}
-		return rslt, float64(totalChances) / float64(succChances)
+		return rslt.Reduce(), float64(totalChances) / float64(succChances)
 	}
 }

@@ -246,24 +246,34 @@ func (gda GeneticDistribution) Breed(gdb GeneticDistribution) GeneticDistributio
 			breedInto(&rslt, pa*pb, ga, gb)
 		}
 	}
-
-	// Reduce the result.
-	g := rslt[0]
-	for _, x := range rslt[1:] {
-		if g == 1 {
-			break
-		}
-		g = gcd(g, x)
-	}
-	for i := range rslt {
-		rslt[i] /= g
-	}
-	return rslt
+	return rslt.Reduce()
 }
 
 func (gd GeneticDistribution) IsZero() bool {
 	var zero GeneticDistribution
 	return gd == zero
+}
+
+func (gd GeneticDistribution) Reduce() GeneticDistribution {
+	rslt := gd
+	if rslt.IsZero() {
+		return rslt
+	}
+
+	g := rslt[0]
+	for _, p := range rslt[1:] {
+		if g == 1 {
+			return rslt
+		}
+		g = gcd(g, p)
+	}
+	if g == 1 {
+		return rslt
+	}
+	for i := range rslt {
+		rslt[i] /= g
+	}
+	return rslt
 }
 
 func breedInto(gd *GeneticDistribution, weight uint64, ga, gb Genotype) {
