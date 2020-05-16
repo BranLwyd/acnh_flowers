@@ -1,6 +1,8 @@
 package breedgraph
 
 import (
+	"fmt"
+
 	"github.com/BranLwyd/acnh_flowers/flower"
 )
 
@@ -10,8 +12,6 @@ type Graph struct {
 	verts        []*vertex
 	vertMap      map[flower.GeneticDistribution]*vertex
 	vertFrontier int
-
-	edges []*edge
 }
 
 type vertex struct {
@@ -59,7 +59,6 @@ func (g *Graph) Expand() {
 					continue
 				}
 				e := &edge{pred: [2]*vertex{pa, pb}, testName: testName, cost: cost}
-				g.edges = append(g.edges, e)
 
 				if v, ok := g.vertMap[gd]; ok {
 					// This vertex already exists. Update lowest-cost if necessary.
@@ -89,9 +88,15 @@ func (g *Graph) VisitVertices(f func(Vertex)) {
 }
 
 func (g *Graph) VisitEdges(f func(Edge)) {
-	for _, e := range g.edges {
-		f(Edge{e})
+	verts := make([]interface{}, len(g.verts))
+	for i := range g.verts {
+		verts[i] = g.verts[i]
 	}
+	visitSubgraphPathingToAllOf(verts, func(x interface{}) {
+		if e, ok := x.(*edge); ok {
+			f(Edge{e})
+		}
+	})
 }
 
 func (e *edge) pathCost() float64 {
@@ -105,28 +110,7 @@ func (e *edge) pathCost() float64 {
 }
 
 func (e *edge) visitPath(f func(interface{})) {
-	stk := []*edge{e}
-	handled := map[*edge]struct{}{}
-	for len(stk) != 0 {
-		var e *edge
-		stk, e = stk[:len(stk)-1], stk[len(stk)-1]
-		if _, ok := handled[e]; ok {
-			continue
-		}
-		handled[e] = struct{}{}
-
-		f(e)
-
-		f(e.pred[0])
-		if e.pred[0].pred != nil {
-			stk = append(stk, e.pred[0].pred)
-		}
-
-		f(e.pred[1])
-		if e.pred[1].pred != nil {
-			stk = append(stk, e.pred[1].pred)
-		}
-	}
+	visitSubgraphPathingToAllOf([]interface{}{e}, f)
 }
 
 func (v *vertex) pathCost() float64 {
@@ -137,9 +121,32 @@ func (v *vertex) pathCost() float64 {
 }
 
 func (v *vertex) visitPath(f func(interface{})) {
-	f(v)
-	if v.pred != nil {
-		v.pred.visitPath(f)
+	visitSubgraphPathingToAllOf([]interface{}{v}, f)
+}
+
+// vertsAndEdges is MODIFIED & CONSUMED by this function.
+func visitSubgraphPathingToAllOf(vertsAndEdges []interface{}, f func(interface{})) {
+	stk := vertsAndEdges
+	handled := map[interface{}]struct{}{}
+	for len(stk) != 0 {
+		var x interface{}
+		stk, x = stk[:len(stk)-1], stk[len(stk)-1]
+		if _, ok := handled[x]; ok {
+			continue
+		}
+		handled[x] = struct{}{}
+
+		f(x)
+		switch x := x.(type) {
+		case *vertex:
+			if x.pred != nil {
+				stk = append(stk, x.pred)
+			}
+		case *edge:
+			stk = append(stk, x.pred[0], x.pred[1])
+		default:
+			panic(fmt.Sprintf("visitSubgraphsPathingTo: unexpected type %T", x))
+		}
 	}
 }
 
