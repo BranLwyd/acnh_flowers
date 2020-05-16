@@ -10,6 +10,62 @@ import (
 
 func main() {
 	// Initial flowers.
+	hyacinths := flower.Hyacinths()
+	seedWhite := must(hyacinths.ParseGenotype("rryyWw")).ToGeneticDistribution()
+	seedYellow := must(hyacinths.ParseGenotype("rrYYWW")).ToGeneticDistribution()
+	seedRed := must(hyacinths.ParseGenotype("RRyyWw")).ToGeneticDistribution()
+	blueHyacinthsA := must(hyacinths.ParseGenotype("rryyww")).ToGeneticDistribution()
+	blueHyacinthsB := must(hyacinths.ParseGenotype("RRYyWW")).ToGeneticDistribution()
+
+	// Breeding tests.
+	tests := map[string]breedgraph.Test{
+		"":       breedgraph.NoTest,
+		"Blue":   breedgraph.PhenotypeTest(hyacinths, "Blue"),
+		"Orange": breedgraph.PhenotypeTest(hyacinths, "Orange"),
+		"Pink":   breedgraph.PhenotypeTest(hyacinths, "Pink"),
+		"Purple": breedgraph.PhenotypeTest(hyacinths, "Purple"),
+		"Red":    breedgraph.PhenotypeTest(hyacinths, "Red"),
+		"White":  breedgraph.PhenotypeTest(hyacinths, "White"),
+		"Yellow": breedgraph.PhenotypeTest(hyacinths, "Yellow"),
+	}
+
+	g := breedgraph.NewGraph(tests, []flower.GeneticDistribution{seedWhite, seedYellow, seedRed})
+	g.Expand()
+	g.Expand()
+
+	// Find candidate distribution, or fail out if this is impossible.
+	var blueHyacinths flower.GeneticDistribution
+	cnt := 0
+	g.VisitVertices(func(gd flower.GeneticDistribution) {
+		for g, p := range gd {
+			if p == 0 {
+				continue
+			}
+			if hyacinths.Phenotype(flower.Genotype(g)) != "Blue" {
+				return
+			}
+		}
+		blueHyacinths = gd
+		cnt++
+	})
+	if blueHyacinths.IsZero() {
+		fmt.Fprintf(os.Stderr, "No blue hyacinths possible.\n")
+		os.Exit(1)
+	}
+
+	// Print result.
+	names := map[flower.GeneticDistribution]string{}
+	names[seedWhite] = "Seed White (rryyWw)"
+	names[seedYellow] = "Seed Yellow (rrYYWW)"
+	names[seedRed] = "Seed Red (RRyyWw)"
+	names[blueHyacinthsA] = "Blue Hyacinths (rryyww)"
+	names[blueHyacinthsB] = "Blue Hyacinths (RRYyWW)"
+	printDotGraphPathTo(hyacinths, g, blueHyacinths, names)
+}
+
+/*
+func main() {
+	// Initial flowers.
 	mums := flower.Mums()
 	seedWhite := must(mums.ParseGenotype("rryyWw")).ToGeneticDistribution()
 	seedYellow := must(mums.ParseGenotype("rrYYWW")).ToGeneticDistribution()
@@ -59,6 +115,7 @@ func main() {
 	names[greenMumsB] = "Green Mums (RRYYWW)"
 	printDotGraphPathTo(mums, g, greenMums, names)
 }
+*/
 
 func printGraph(s flower.Species, g *breedgraph.Graph, names map[flower.GeneticDistribution]string) {
 	name := func(gd flower.GeneticDistribution) string {
