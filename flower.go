@@ -8,46 +8,177 @@ import (
 	"strings"
 )
 
-const (
-	threeGeneGenotypeCount = 64
-)
+func Cosmos() Species      { return cosmos }
+func Hyacinths() Species   { return hyacinths }
+func Lilies() Species      { return lilies }
+func Mums() Species        { return mums }
+func Pansies() Species     { return pansies }
+func Roses() Species       { return roses }
+func Tulips() Species      { return tulips }
+func Windflowers() Species { return windflowers }
 
-// Species3 represents a specific species of flower with three genes, such as
-// Windflower or Mum.
-type Species3 struct {
-	name string // a human-readable name for this species, e.g. "Windflower".
-
-	// Mappings from numeric gene values to human-readable gene values.
-	gene0 [3]string // possible human-readable values of the first gene, e.g. {rr, Rr, RR}
-	gene1 [3]string // possible human-readable values of the second gene, e.g. {ww, Ww, WW}
-	gene2 [3]string // possible human-readable values of the third gene, e.g. {yy, Yy, YY}
+// Species represents a specific species of flower, such as Windflower or Mum.
+type Species struct {
+	name       string              // a human-readable name for this species, e.g. "Windflowers".
+	phenotypes map[Genotype]string // phenotypes by genotype
+	serde      GenotypeSerde       // the (default) serializer/deserializer for genotypes; also determines gene count
 }
 
-func NewSpecies3(name, genes string) Species3 {
-	// TODO: validate genes
-	return Species3{
-		name:  name,
-		gene0: [3]string{fmt.Sprintf("%[1]c%[1]c", genes[1]), genes[0:2], fmt.Sprintf("%[1]c%[1]c", genes[0])},
-		gene1: [3]string{fmt.Sprintf("%[1]c%[1]c", genes[3]), genes[2:4], fmt.Sprintf("%[1]c%[1]c", genes[2])},
-		gene2: [3]string{fmt.Sprintf("%[1]c%[1]c", genes[5]), genes[4:6], fmt.Sprintf("%[1]c%[1]c", genes[4])},
+func newSpecies(name string, phenotypes map[string]string) (Species, error) {
+	s := Species{name: name}
+	gsInit := false
+	var gs GenotypeSerde
+	pts := map[Genotype]string{}
+	for gStr, p := range phenotypes {
+		if !gsInit {
+			serde, err := NewGenotypeSerdeFromExample(gStr)
+			if err != nil {
+				return Species{}, fmt.Errorf("couldn't parse genotype %q: %v", gStr, err)
+			}
+			gs, gsInit = serde, true
+		}
+
+		g, err := gs.ParseGenotype(gStr)
+		if err != nil {
+			return Species{}, err
+		}
+		pts[g] = p
 	}
+	s.phenotypes = pts
+	s.serde = gs
+
+	if gs.GeneCount() == 3 && len(s.phenotypes) != 27 {
+		return Species{}, fmt.Errorf("got %d phenotypes, expected 27", len(phenotypes))
+	}
+	if gs.GeneCount() == 4 && len(s.phenotypes) != 81 {
+		return Species{}, fmt.Errorf("got %d phenotypes, expected 81", len(phenotypes))
+	}
+
+	return s, nil
 }
 
-func (s Species3) ParseGenotype(genotype string) (Genotype, error) {
+func mustSpecies(name string, phenotypes map[string]string) Species {
+	s, err := newSpecies(name, phenotypes)
+	if err != nil {
+		panic(fmt.Sprintf("Could not create species %q: %v", name, err))
+	}
+	return s
+}
+
+func (s Species) Phenotype(g Genotype) string {
+	return s.phenotypes[g]
+}
+
+func (s Species) ParseGenotype(genotype string) (Genotype, error) {
+	return s.serde.ParseGenotype(genotype)
+}
+
+func (s Species) RenderGenotype(g Genotype) string {
+	return s.serde.RenderGenotype(g)
+}
+
+func (s Species) RenderGeneticDistribution(gd GeneticDistribution) string {
+	return s.serde.RenderGeneticDistribution(gd)
+}
+
+// Genotype represents a specific set of genes for a species, e.g. RrwwYY.
+type Genotype uint8
+
+// Internally, each two consecutive bits of a Genotype value represents a gene.
+//  0 == 0b00 is dual-recessive (rr).
+//  1 == 0b01 is dominant/recessive (Rr).
+//  2 == 0b10 is dual-domninant (RR).
+//  3 == 0b11 is unused.
+
+func (g Genotype) gene0() uint8 { return uint8((g >> 0) & 0b11) }
+func (g Genotype) gene1() uint8 { return uint8((g >> 2) & 0b11) }
+func (g Genotype) gene2() uint8 { return uint8((g >> 4) & 0b11) }
+func (g Genotype) gene3() uint8 { return uint8((g >> 6) & 0b11) }
+
+func (g Genotype) ToGeneticDistribution() GeneticDistribution {
+	var gd GeneticDistribution
+	gd[g] = 1
+	return gd
+}
+
+type GenotypeSerde struct {
+	gene0 [3]string // contents of these will be something like {"rr", "Rr", "RR"}
+	gene1 [3]string
+	gene2 [3]string
+	gene3 [3]string // {"", "", ""} for 3-gene species
+}
+
+func NewGenotypeSerdeFromExample(genotype string) (GenotypeSerde, error) {
+	if len(genotype) != 6 && len(genotype) != 8 {
+		return GenotypeSerde{}, fmt.Errorf("genotype %q has wrong length (expected 6 or 8)", genotype)
+	}
+
+	genesFrom := func(gene string) ([3]string, error) {
+		lo, hi := strings.ToLower(gene[0:1]), strings.ToUpper(gene[0:1])
+		genes := [3]string{lo + lo, hi + lo, hi + hi}
+		if gene != genes[0] && gene != genes[1] && gene != genes[2] {
+			return [3]string{}, fmt.Errorf("could not parse gene %q", gene)
+		}
+		return genes, nil
+	}
+
+	gene0, err := genesFrom(genotype[0:2])
+	if err != nil {
+		return GenotypeSerde{}, err
+	}
+	gene1, err := genesFrom(genotype[2:4])
+	if err != nil {
+		return GenotypeSerde{}, err
+	}
+	gene2, err := genesFrom(genotype[4:6])
+	if err != nil {
+		return GenotypeSerde{}, err
+	}
+	var gene3 [3]string
+	if len(genotype) == 8 {
+		gene3, err = genesFrom(genotype[6:8])
+		if err != nil {
+			return GenotypeSerde{}, err
+		}
+	}
+
+	if gene0 == gene1 || gene0 == gene2 || gene0 == gene3 || gene1 == gene2 || gene1 == gene3 || gene2 == gene3 {
+		return GenotypeSerde{}, fmt.Errorf("duplicate gene letters (%q, %q, %q, %q)", gene0[0], gene1[0], gene2[0], gene3[0])
+	}
+
+	return GenotypeSerde{gene0, gene1, gene2, gene3}, nil
+}
+
+func (gs GenotypeSerde) GeneCount() int {
+	if gs.gene3[0] == "" {
+		return 3
+	}
+	return 4
+}
+
+func (gs GenotypeSerde) ParseGenotype(genotype string) (Genotype, error) {
 	var rslt Genotype
 
-	if len(genotype) != 6 {
+	if gs.gene3[0] == "" && len(genotype) != 6 {
 		return 0, fmt.Errorf("genotype %q has wrong length (expected 6)", genotype)
+	}
+	if gs.gene3[0] != "" && len(genotype) != 8 {
+		return 0, fmt.Errorf("genotype %q has wrong length (expected 8)", genotype)
 	}
 
 	for _, x := range []struct {
 		gene   [3]string
 		offset uint
 	}{
-		{s.gene0, 0},
-		{s.gene1, 2},
-		{s.gene2, 4},
+		{gs.gene0, 0},
+		{gs.gene1, 2},
+		{gs.gene2, 4},
+		{gs.gene3, 6},
 	} {
+		if x.gene[0] == "" {
+			break
+		}
+
 		found := false
 		for i, v := range x.gene {
 			if v == genotype[x.offset:x.offset+2] {
@@ -63,15 +194,18 @@ func (s Species3) ParseGenotype(genotype string) (Genotype, error) {
 	return rslt, nil
 }
 
-func (s Species3) RenderGenotype(g Genotype) string {
-	return fmt.Sprintf("%s%s%s", s.gene0[g.gene0()], s.gene1[g.gene1()], s.gene2[g.gene2()])
+func (gs GenotypeSerde) RenderGenotype(g Genotype) string {
+	if gs.gene3[0] == "" {
+		return fmt.Sprintf("%s%s%s", gs.gene0[g.gene0()], gs.gene1[g.gene1()], gs.gene2[g.gene2()])
+	}
+	return fmt.Sprintf("%s%s%s%s", gs.gene0[g.gene0()], gs.gene1[g.gene1()], gs.gene2[g.gene2()], gs.gene3[g.gene3()])
 }
 
-func (s Species3) RenderGeneticDistribution3(gd GeneticDistribution3) string {
+func (gs GenotypeSerde) RenderGeneticDistribution(gd GeneticDistribution) string {
 	var sb strings.Builder
 	written := false
 	sb.WriteString("{")
-	for g, p := range gd.dist {
+	for g, p := range gd {
 		if p == 0 {
 			continue
 		}
@@ -80,109 +214,74 @@ func (s Species3) RenderGeneticDistribution3(gd GeneticDistribution3) string {
 		}
 		sb.WriteString(strconv.FormatUint(p, 10))
 		sb.WriteString(":")
-		sb.WriteString(s.RenderGenotype(Genotype(g)))
+		sb.WriteString(gs.RenderGenotype(Genotype(g)))
 		written = true
 	}
 	sb.WriteString("}")
 	return sb.String()
 }
 
-// Genotype represents a specific set of genes for a species, e.g. RrwwYY.
-type Genotype uint8
+const (
+	threeGeneGenotypeCount = 64
+	fourGeneGenotypeCount  = 256
+)
 
-// Internally, each two consecutive bits of a Genotype value represents a gene.
-//  0 == 0b00 is dual-recessive (rr).
-//  1 == 0b01 is dominant/recessive (Rr).
-//  2 == 0b10 is dual-domninant (RR).
-//  3 == 0b11 is unused.
+// GeneticDistribution represents a probability distribution over all possible genotypes.
+type GeneticDistribution [256]uint64
 
-func (g Genotype) gene0() uint8 { return uint8((g >> 0) & 0b11) }
-func (g Genotype) gene1() uint8 { return uint8((g >> 2) & 0b11) }
-func (g Genotype) gene2() uint8 { return uint8((g >> 4) & 0b11) }
-
-func (g Genotype) ToGeneticDistribution3() GeneticDistribution3 {
-	var rslt GeneticDistribution3
-	rslt.dist[g] = 1
-	return rslt
-}
-
-// GeneticDistribution3 represents a probability distribution over all possible
-// genotypes for a three-gene species.
-type GeneticDistribution3 struct {
-	dist [threeGeneGenotypeCount]uint64 // TODO: is uint64 big enough?
-}
-
-func (gda GeneticDistribution3) Breed(gdb GeneticDistribution3) GeneticDistribution3 {
-	var rslt GeneticDistribution3
+func (gda GeneticDistribution) Breed(gdb GeneticDistribution) GeneticDistribution {
+	var rslt GeneticDistribution
 
 	// Breed each pair of possible genotypes into the result.
-	for ga, pa := range gda.dist {
+	for ga, pa := range gda {
 		if pa == 0 {
 			continue
 		}
 		ga := Genotype(ga)
-		for gb, pb := range gdb.dist {
+		for gb, pb := range gdb {
 			if pb == 0 {
 				continue
 			}
 			gb := Genotype(gb)
-			rslt.breedInto(pa*pb, ga, gb)
+			breedInto(&rslt, pa*pb, ga, gb)
 		}
 	}
 
 	// Reduce the result.
-	g := rslt.dist[0]
-	for _, x := range rslt.dist[1:] {
+	g := rslt[0]
+	for _, x := range rslt[1:] {
 		if g == 1 {
 			break
 		}
 		g = gcd(g, x)
 	}
-	for i := range rslt.dist {
-		rslt.dist[i] /= g
+	for i := range rslt {
+		rslt[i] /= g
 	}
 	return rslt
 }
 
-func (gda *GeneticDistribution3) breedInto(weight uint64, ga, gb Genotype) {
+func (gd GeneticDistribution) IsZero() bool {
+	var zero GeneticDistribution
+	return gd == zero
+}
+
+func breedInto(gd *GeneticDistribution, weight uint64, ga, gb Genotype) {
 	wt0 := punnetSquareLookupTable[ga.gene0()][gb.gene0()]
 	wt1 := punnetSquareLookupTable[ga.gene1()][gb.gene1()]
 	wt2 := punnetSquareLookupTable[ga.gene2()][gb.gene2()]
+	wt3 := punnetSquareLookupTable[ga.gene3()][gb.gene3()]
 
 	for g0, w0 := range wt0 {
 		for g1, w1 := range wt1 {
 			for g2, w2 := range wt2 {
-				gda.dist[g0|(g1<<2)|(g2<<4)] += weight * w0 * w1 * w2
+				for g3, w3 := range wt3 {
+					gd[g0|(g1<<2)|(g2<<4)|(g3<<6)] += weight * w0 * w1 * w2 * w3
+				}
 			}
 		}
 	}
 }
-
-var (
-	// TODO: generate this lookup table from code, to decrease odds of error
-	punnetSquareLookupTable = [3][3][3]uint64{
-		// ga == 0 (rr)
-		[3][3]uint64{
-			[3]uint64{4, 0, 0},
-			[3]uint64{2, 2, 0},
-			[3]uint64{0, 4, 0},
-		},
-
-		// ga = 1 (Rr)
-		[3][3]uint64{
-			[3]uint64{2, 2, 0},
-			[3]uint64{1, 2, 1},
-			[3]uint64{0, 2, 2},
-		},
-
-		// ga = 2 (RR)
-		[3][3]uint64{
-			[3]uint64{0, 4, 0},
-			[3]uint64{0, 2, 2},
-			[3]uint64{0, 0, 4},
-		},
-	}
-)
 
 // Based on https://en.wikipedia.org/wiki/Binary_GCD_algorithm#Iterative_version_in_C.
 func gcd(u, v uint64) uint64 {
@@ -219,3 +318,326 @@ func gcd(u, v uint64) uint64 {
 	}
 	return u << shift
 }
+
+//
+// Lookup tables & other data only after this point.
+//
+var (
+	// TODO: generate this lookup table from code, to decrease odds of error
+	punnetSquareLookupTable = [3][3][3]uint64{
+		// ga == 0 (rr)
+		[3][3]uint64{
+			[3]uint64{4, 0, 0},
+			[3]uint64{2, 2, 0},
+			[3]uint64{0, 4, 0},
+		},
+
+		// ga = 1 (Rr)
+		[3][3]uint64{
+			[3]uint64{2, 2, 0},
+			[3]uint64{1, 2, 1},
+			[3]uint64{0, 2, 2},
+		},
+
+		// ga = 2 (RR)
+		[3][3]uint64{
+			[3]uint64{0, 4, 0},
+			[3]uint64{0, 2, 2},
+			[3]uint64{0, 0, 4},
+		},
+	}
+
+	cosmos = mustSpecies("Cosmos", map[string]string{
+		"rryyss": "White",
+		"rryySs": "White",
+		"rryySS": "White",
+		"rrYyss": "Yellow",
+		"rrYySs": "Yellow",
+		"rrYySS": "White",
+		"rrYYss": "Yellow",
+		"rrYYSs": "Yellow",
+		"rrYYSS": "Yellow",
+		"Rryyss": "Pink",
+		"RryySs": "Pink",
+		"RryySS": "Pink",
+		"RrYyss": "Orange",
+		"RrYySs": "Orange",
+		"RrYySS": "Pink",
+		"RrYYss": "Orange",
+		"RrYYSs": "Orange",
+		"RrYYSS": "Orange",
+		"RRyyss": "Red",
+		"RRyySs": "Red",
+		"RRyySS": "Red",
+		"RRYyss": "Orange",
+		"RRYySs": "Orange",
+		"RRYySS": "Red",
+		"RRYYss": "Black",
+		"RRYYSs": "Black",
+		"RRYYSS": "Red",
+	})
+
+	hyacinths = mustSpecies("Hyacinths", map[string]string{
+		"rryyWW": "White",
+		"rryyWw": "White",
+		"rryyww": "Blue",
+		"rrYyWW": "Yellow",
+		"rrYyWw": "Yellow",
+		"rrYyww": "White",
+		"rrYYWW": "Yellow",
+		"rrYYWw": "Yellow",
+		"rrYYww": "Yellow",
+		"RryyWW": "Red",
+		"RryyWw": "Pink",
+		"Rryyww": "White",
+		"RrYyWW": "Orange",
+		"RrYyWw": "Yellow",
+		"RrYyww": "Yellow",
+		"RrYYWW": "Orange",
+		"RrYYWw": "Yellow",
+		"RrYYww": "Yellow",
+		"RRyyWW": "Red",
+		"RRyyWw": "Red",
+		"RRyyww": "Red",
+		"RRYyWW": "Blue",
+		"RRYyWw": "Red",
+		"RRYyww": "Red",
+		"RRYYWW": "Purple",
+		"RRYYWw": "Purple",
+		"RRYYww": "Purple",
+	})
+
+	lilies = mustSpecies("Lilies", map[string]string{
+		"rryyss": "White",
+		"rryySs": "White",
+		"rryySS": "White",
+		"rrYyss": "Yellow",
+		"rrYySs": "White",
+		"rrYySS": "White",
+		"rrYYss": "Yellow",
+		"rrYYSs": "Yellow",
+		"rrYYSS": "White",
+		"Rryyss": "Red",
+		"RryySs": "Pink",
+		"RryySS": "White",
+		"RrYyss": "Orange",
+		"RrYySs": "Yellow",
+		"RrYySS": "Yellow",
+		"RrYYss": "Orange",
+		"RrYYSs": "Yellow",
+		"RrYYSS": "Yellow",
+		"RRyyss": "Black",
+		"RRyySs": "Red",
+		"RRyySS": "Pink",
+		"RRYyss": "Black",
+		"RRYySs": "Red",
+		"RRYySS": "Pink",
+		"RRYYss": "Orange",
+		"RRYYSs": "Orange",
+		"RRYYSS": "White",
+	})
+
+	mums = mustSpecies("Mums", map[string]string{
+		"rryyWW": "White",
+		"rryyWw": "White",
+		"rryyww": "Purple",
+		"rrYyWW": "Yellow",
+		"rrYyWw": "Yellow",
+		"rrYyww": "White",
+		"rrYYWW": "Yellow",
+		"rrYYWw": "Yellow",
+		"rrYYww": "Yellow",
+		"RryyWW": "Pink",
+		"RryyWw": "Pink",
+		"Rryyww": "Pink",
+		"RrYyWW": "Yellow",
+		"RrYyWw": "Red",
+		"RrYyww": "Pink",
+		"RrYYWW": "Purple",
+		"RrYYWw": "Purple",
+		"RrYYww": "Purple",
+		"RRyyWW": "Red",
+		"RRyyWw": "Red",
+		"RRyyww": "Red",
+		"RRYyWW": "Purple",
+		"RRYyWw": "Purple",
+		"RRYyww": "Red",
+		"RRYYWW": "Green",
+		"RRYYWw": "Green",
+		"RRYYww": "Red",
+	})
+
+	pansies = mustSpecies("Pansies", map[string]string{
+		"rryyWW": "White",
+		"rryyWw": "White",
+		"rryyww": "Blue",
+		"rrYyWW": "Yellow",
+		"rrYyWw": "Yellow",
+		"rrYyww": "Blue",
+		"rrYYWW": "Yellow",
+		"rrYYWw": "Yellow",
+		"rrYYww": "Yellow",
+		"RryyWW": "Red",
+		"RryyWw": "Red",
+		"Rryyww": "Blue",
+		"RrYyWW": "Orange",
+		"RrYyWw": "Orange",
+		"RrYyww": "Orange",
+		"RrYYWW": "Yellow",
+		"RrYYWw": "Yellow",
+		"RrYYww": "Yellow",
+		"RRyyWW": "Red",
+		"RRyyWw": "Red",
+		"RRyyww": "Purple",
+		"RRYyWW": "Red",
+		"RRYyWw": "Red",
+		"RRYyww": "Purple",
+		"RRYYWW": "Orange",
+		"RRYYWw": "Orange",
+		"RRYYww": "Purple",
+	})
+
+	roses = mustSpecies("Roses", map[string]string{
+		"rryyWWss": "White",
+		"rryyWWSs": "White",
+		"rryyWWSS": "White",
+		"rryyWwss": "White",
+		"rryyWwSs": "White",
+		"rryyWwSS": "White",
+		"rryywwss": "Purple",
+		"rryywwSs": "Purple",
+		"rryywwSS": "Purple",
+		"rrYyWWss": "Yellow",
+		"rrYyWWSs": "Yellow",
+		"rrYyWWSS": "Yellow",
+		"rrYyWwss": "White",
+		"rrYyWwSs": "White",
+		"rrYyWwSS": "White",
+		"rrYywwss": "Purple",
+		"rrYywwSs": "Purple",
+		"rrYywwSS": "Purple",
+		"rrYYWWss": "Yellow",
+		"rrYYWWSs": "Yellow",
+		"rrYYWWSS": "Yellow",
+		"rrYYWwss": "Yellow",
+		"rrYYWwSs": "Yellow",
+		"rrYYWwSS": "Yellow",
+		"rrYYwwss": "White",
+		"rrYYwwSs": "White",
+		"rrYYwwSS": "White",
+		"RryyWWss": "Red",
+		"RryyWWSs": "Pink",
+		"RryyWWSS": "White",
+		"RryyWwss": "Red",
+		"RryyWwSs": "Pink",
+		"RryyWwSS": "White",
+		"Rryywwss": "Red",
+		"RryywwSs": "Pink",
+		"RryywwSS": "Purple",
+		"RrYyWWss": "Orange",
+		"RrYyWWSs": "Yellow",
+		"RrYyWWSS": "Yellow",
+		"RrYyWwss": "Red",
+		"RrYyWwSs": "Pink",
+		"RrYyWwSS": "White",
+		"RrYywwss": "Red",
+		"RrYywwSs": "Pink",
+		"RrYywwSS": "Purple",
+		"RrYYWWss": "Orange",
+		"RrYYWWSs": "Yellow",
+		"RrYYWWSS": "Yellow",
+		"RrYYWwss": "Orange",
+		"RrYYWwSs": "Yellow",
+		"RrYYWwSS": "Yellow",
+		"RrYYwwss": "Red",
+		"RrYYwwSs": "Pink",
+		"RrYYwwSS": "White",
+		"RRyyWWss": "Black",
+		"RRyyWWSs": "Red",
+		"RRyyWWSS": "Pink",
+		"RRyyWwss": "Black",
+		"RRyyWwSs": "Red",
+		"RRyyWwSS": "Pink",
+		"RRyywwss": "Black",
+		"RRyywwSs": "Red",
+		"RRyywwSS": "Pink",
+		"RRYyWWss": "Orange",
+		"RRYyWWSs": "Orange",
+		"RRYyWWSS": "Yellow",
+		"RRYyWwss": "Red",
+		"RRYyWwSs": "Red",
+		"RRYyWwSS": "White",
+		"RRYywwss": "Black",
+		"RRYywwSs": "Red",
+		"RRYywwSS": "Purple",
+		"RRYYWWss": "Orange",
+		"RRYYWWSs": "Orange",
+		"RRYYWWSS": "Yellow",
+		"RRYYWwss": "Orange",
+		"RRYYWwSs": "Orange",
+		"RRYYWwSS": "Yellow",
+		"RRYYwwss": "Blue",
+		"RRYYwwSs": "Red",
+		"RRYYwwSS": "White",
+	})
+
+	tulips = mustSpecies("Tulips", map[string]string{
+		"rryyss": "White",
+		"rryySs": "White",
+		"rryySS": "White",
+		"rrYyss": "Yellow",
+		"rrYySs": "Yellow",
+		"rrYySS": "White",
+		"rrYYss": "Yellow",
+		"rrYYSs": "Yellow",
+		"rrYYSS": "Yellow",
+		"Rryyss": "Red",
+		"RryySs": "Pink",
+		"RryySS": "White",
+		"RrYyss": "Orange",
+		"RrYySs": "Yellow",
+		"RrYySS": "Yellow",
+		"RrYYss": "Orange",
+		"RrYYSs": "Yellow",
+		"RrYYSS": "Yellow",
+		"RRyyss": "Black",
+		"RRyySs": "Red",
+		"RRyySS": "Red",
+		"RRYyss": "Black",
+		"RRYySs": "Red",
+		"RRYySS": "Red",
+		"RRYYss": "Purple",
+		"RRYYSs": "Purple",
+		"RRYYSS": "Purple",
+	})
+
+	windflowers = mustSpecies("Windflowers", map[string]string{
+		"rrooWW": "White",
+		"rrooWw": "White",
+		"rrooww": "Blue",
+		"rrOoWW": "Orange",
+		"rrOoWw": "Orange",
+		"rrOoww": "Blue",
+		"rrOOWW": "Orange",
+		"rrOOWw": "Orange",
+		"rrOOww": "Orange",
+		"RrooWW": "Red",
+		"RrooWw": "Red",
+		"Rrooww": "Blue",
+		"RrOoWW": "Pink",
+		"RrOoWw": "Pink",
+		"RrOoww": "Pink",
+		"RrOOWW": "Orange",
+		"RrOOWw": "Orange",
+		"RrOOww": "Orange",
+		"RRooWW": "Red",
+		"RRooWw": "Red",
+		"RRooww": "Purple",
+		"RROoWW": "Red",
+		"RROoWw": "Red",
+		"RROoww": "Purple",
+		"RROOWW": "Pink",
+		"RROOWw": "Pink",
+		"RROOww": "Purple",
+	})
+)
