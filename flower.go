@@ -146,6 +146,16 @@ func NewGenotypeSerdeFromExample(genotype string) (GenotypeSerde, error) {
 	return GenotypeSerde{gene0, gene1, gene2, gene3}, nil
 }
 
+func NewGenotypeSerdeFromExampleDistribution(geneticDistribution string) (GenotypeSerde, error) {
+	_, gs, err := parseGeneticDistribution(GenotypeSerde{}, geneticDistribution)
+	return gs, err
+}
+
+func (gs GenotypeSerde) IsZero() bool {
+	var zero GenotypeSerde
+	return gs == zero
+}
+
 func (gs GenotypeSerde) GeneCount() int {
 	if gs.gene3[0] == "" {
 		return 3
@@ -198,48 +208,71 @@ func (gs GenotypeSerde) RenderGenotype(g Genotype) string {
 	return fmt.Sprintf("%s%s%s%s", gs.gene0[g.gene0()], gs.gene1[g.gene1()], gs.gene2[g.gene2()], gs.gene3[g.gene3()])
 }
 
-var genotypeRe = regexp.MustCompile(`^\w{6}\w{2}?$`)
-
 func (gs GenotypeSerde) ParseGeneticDistribution(geneticDistribution string) (GeneticDistribution, error) {
+	gd, _, err := parseGeneticDistribution(gs, geneticDistribution)
+	return gd, err
+}
+
+var genotypeRe = regexp.MustCompile(`^\w{6}(\w{2})?$`)
+
+func parseGeneticDistribution(gs GenotypeSerde, geneticDistribution string) (GeneticDistribution, GenotypeSerde, error) {
+	maybeCreateGS := func(geneticDistribution string) error {
+		if !gs.IsZero() {
+			return nil
+		}
+		newGS, err := NewGenotypeSerdeFromExample(geneticDistribution)
+		if err != nil {
+			return err
+		}
+		gs = newGS
+		return nil
+	}
+
 	if genotypeRe.MatchString(geneticDistribution) {
+		if err := maybeCreateGS(geneticDistribution); err != nil {
+			return GeneticDistribution{}, GenotypeSerde{}, fmt.Errorf("couldn't parse genotype as genetic distribution: %v", err)
+		}
 		gd, err := gs.ParseGenotype(geneticDistribution)
 		if err != nil {
-			return GeneticDistribution{}, fmt.Errorf("couldn't implicitly parse genotype as genetic distribution: %v", err)
+			return GeneticDistribution{}, GenotypeSerde{}, fmt.Errorf("couldn't parse genotype as genetic distribution: %v", err)
 		}
-		return gd.ToGeneticDistribution(), nil
+		return gd.ToGeneticDistribution(), gs, nil
 	}
 
 	var rslt GeneticDistribution
 	if len(geneticDistribution) == 0 || geneticDistribution[0] != '{' || geneticDistribution[len(geneticDistribution)-1] != '}' {
-		return GeneticDistribution{}, errors.New("couldn't parse genetic distribution: not wrapped in curly quotes")
+		return GeneticDistribution{}, GenotypeSerde{}, errors.New("couldn't parse genetic distribution: not wrapped in curly quotes")
 	}
 	geneticDistribution = geneticDistribution[1 : len(geneticDistribution)-1]
 	for _, term := range strings.Split(geneticDistribution, ",") {
 		term = strings.TrimSpace(term)
 		termSpl := strings.SplitN(term, ":", 2)
 		if len(termSpl) != 2 {
-			return GeneticDistribution{}, fmt.Errorf("couldn't parse genetic distribution: unparseable term %q", term)
+			return GeneticDistribution{}, GenotypeSerde{}, fmt.Errorf("couldn't parse genetic distribution: unparseable term %q", term)
 		}
 
 		odds, err := strconv.ParseUint(strings.TrimSpace(termSpl[0]), 10, 64)
 		if err != nil {
-			return GeneticDistribution{}, fmt.Errorf("couldn't parse genetic distribution: couldn't parse odds for term %q: %v", term, err)
+			return GeneticDistribution{}, GenotypeSerde{}, fmt.Errorf("couldn't parse genetic distribution: couldn't parse odds for term %q: %v", term, err)
 		}
 		if odds == 0 {
-			return GeneticDistribution{}, fmt.Errorf("couldn't parse genetic distribution: couldn't parse odds for term %q: odds are zero", term)
+			return GeneticDistribution{}, GenotypeSerde{}, fmt.Errorf("couldn't parse genetic distribution: couldn't parse odds for term %q: odds are zero", term)
 		}
 
+		if err := maybeCreateGS(termSpl[1]); err != nil {
+			return GeneticDistribution{}, GenotypeSerde{}, fmt.Errorf("couldn't parse genetic distribution: %v", err)
+		}
 		g, err := gs.ParseGenotype(strings.TrimSpace(termSpl[1]))
 		if err != nil {
-			return GeneticDistribution{}, fmt.Errorf("couldn't parse genetic distribution: couldn't parse genotype for term %q: %v", term, err)
+			return GeneticDistribution{}, GenotypeSerde{}, fmt.Errorf("couldn't parse genetic distribution: couldn't parse genotype for term %q: %v", term, err)
 		}
 		if rslt[g] != 0 {
-			return GeneticDistribution{}, fmt.Errorf("couldn't parse genetic distribution: duplicate genotype %q", gs.RenderGenotype(g))
+			return GeneticDistribution{}, GenotypeSerde{}, fmt.Errorf("couldn't parse genetic distribution: duplicate genotype %q", gs.RenderGenotype(g))
 		}
 
 		rslt[g] = odds
 	}
-	return rslt.Reduce(), nil
+	return rslt.Reduce(), gs, nil
 }
 
 func (gs GenotypeSerde) RenderGeneticDistribution(gd GeneticDistribution) string {
