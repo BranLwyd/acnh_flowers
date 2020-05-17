@@ -67,18 +67,13 @@ func mustSpecies(name string, phenotypes map[string]string) Species {
 	return s
 }
 
-func (s Species) Phenotype(g Genotype) string {
-	return s.phenotypes[g]
-}
-
+func (s Species) Name() string                { return s.name }
+func (s Species) GeneCount() int              { return s.serde.GeneCount() }
+func (s Species) Phenotype(g Genotype) string { return s.phenotypes[g] }
 func (s Species) ParseGenotype(genotype string) (Genotype, error) {
 	return s.serde.ParseGenotype(genotype)
 }
-
-func (s Species) RenderGenotype(g Genotype) string {
-	return s.serde.RenderGenotype(g)
-}
-
+func (s Species) RenderGenotype(g Genotype) string { return s.serde.RenderGenotype(g) }
 func (s Species) RenderGeneticDistribution(gd GeneticDistribution) string {
 	return s.serde.RenderGeneticDistribution(gd)
 }
