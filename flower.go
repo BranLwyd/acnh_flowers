@@ -295,11 +295,6 @@ func (gs GenotypeSerde) RenderGeneticDistribution(gd GeneticDistribution) string
 	return sb.String()
 }
 
-const (
-	threeGeneGenotypeCount = 64
-	fourGeneGenotypeCount  = 256
-)
-
 // GeneticDistribution represents a probability distribution over all possible genotypes.
 type GeneticDistribution [256]uint64
 
