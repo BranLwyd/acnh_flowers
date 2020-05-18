@@ -158,22 +158,22 @@ var (
 
 func PhenotypeTest(s flower.Species, phenotype string) Test {
 	return func(gd flower.GeneticDistribution) (flower.GeneticDistribution, float64) {
-		rslt := gd
 		var succChances, totalChances uint64
-		for g, p := range rslt {
-			g := flower.Genotype(g)
-			totalChances += p
-			if s.Phenotype(g) == phenotype {
-				succChances += p
-			} else {
-				rslt[g] = 0
-			}
-		}
+		rslt := gd.Update(func(mgd *flower.MutableGeneticDistribution) {
+			gd.Visit(func(g flower.Genotype, p uint64) {
+				totalChances += p
+				if s.Phenotype(g) == phenotype {
+					succChances += p
+				} else {
+					mgd.SetOdds(g, 0)
+				}
+			})
+		})
 		if succChances == 0 {
 			// This test can't be applied.
 			return flower.GeneticDistribution{}, 0
 		}
-		return rslt.Reduce(), float64(totalChances) / float64(succChances)
+		return rslt, float64(totalChances) / float64(succChances)
 	}
 }
 

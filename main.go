@@ -38,14 +38,15 @@ func main() {
 	// Find candidate distribution, or fail out if this is impossible.
 	var candidate breedgraph.Vertex
 	g.VisitVertices(func(v breedgraph.Vertex) {
+		isSuitable := true
 		// Is this a suitable candidate?
-		for g, p := range v.Value() {
-			if p == 0 {
-				continue
-			}
+		v.Value().Visit(func(g flower.Genotype, p uint64) {
 			if roses.Phenotype(flower.Genotype(g)) != "Blue" {
-				return
+				isSuitable = false
 			}
+		})
+		if !isSuitable {
+			return
 		}
 
 		// It is a suitable candidate. Is it the cheapeast candidate we've found so far?

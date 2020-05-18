@@ -93,9 +93,9 @@ func (g Genotype) gene2() uint8 { return uint8((g >> 4) & 0b11) }
 func (g Genotype) gene3() uint8 { return uint8((g >> 6) & 0b11) }
 
 func (g Genotype) ToGeneticDistribution() GeneticDistribution {
-	var gd GeneticDistribution
-	gd[g] = 1
-	return gd
+	return GeneticDistribution{}.Update(func(gd *MutableGeneticDistribution) {
+		gd.SetOdds(g, 1)
+	})
 }
 
 type GenotypeSerde struct {
@@ -239,75 +239,105 @@ func parseGeneticDistribution(gs GenotypeSerde, geneticDistribution string) (Gen
 		return gd.ToGeneticDistribution(), gs, nil
 	}
 
-	var rslt GeneticDistribution
 	if len(geneticDistribution) == 0 || geneticDistribution[0] != '{' || geneticDistribution[len(geneticDistribution)-1] != '}' {
 		return GeneticDistribution{}, GenotypeSerde{}, errors.New("couldn't parse genetic distribution: not wrapped in curly quotes")
 	}
 	geneticDistribution = geneticDistribution[1 : len(geneticDistribution)-1]
-	for _, term := range strings.Split(geneticDistribution, ",") {
-		term = strings.TrimSpace(term)
-		termSpl := strings.SplitN(term, ":", 2)
-		if len(termSpl) != 2 {
-			return GeneticDistribution{}, GenotypeSerde{}, fmt.Errorf("couldn't parse genetic distribution: unparseable term %q", term)
-		}
 
-		odds, err := strconv.ParseUint(strings.TrimSpace(termSpl[0]), 10, 64)
-		if err != nil {
-			return GeneticDistribution{}, GenotypeSerde{}, fmt.Errorf("couldn't parse genetic distribution: couldn't parse odds for term %q: %v", term, err)
-		}
-		if odds == 0 {
-			return GeneticDistribution{}, GenotypeSerde{}, fmt.Errorf("couldn't parse genetic distribution: couldn't parse odds for term %q: odds are zero", term)
-		}
+	var updErr error
+	rslt := GeneticDistribution{}.Update(func(gd *MutableGeneticDistribution) {
+		for _, term := range strings.Split(geneticDistribution, ",") {
+			term = strings.TrimSpace(term)
+			termSpl := strings.SplitN(term, ":", 2)
+			if len(termSpl) != 2 {
+				updErr = fmt.Errorf("couldn't parse genetic distribution: unparseable term %q", term)
+				return
+			}
 
-		if err := maybeCreateGS(termSpl[1]); err != nil {
-			return GeneticDistribution{}, GenotypeSerde{}, fmt.Errorf("couldn't parse genetic distribution: %v", err)
-		}
-		g, err := gs.ParseGenotype(strings.TrimSpace(termSpl[1]))
-		if err != nil {
-			return GeneticDistribution{}, GenotypeSerde{}, fmt.Errorf("couldn't parse genetic distribution: couldn't parse genotype for term %q: %v", term, err)
-		}
-		if rslt[g] != 0 {
-			return GeneticDistribution{}, GenotypeSerde{}, fmt.Errorf("couldn't parse genetic distribution: duplicate genotype %q", gs.RenderGenotype(g))
-		}
+			odds, err := strconv.ParseUint(strings.TrimSpace(termSpl[0]), 10, 64)
+			if err != nil {
+				updErr = fmt.Errorf("couldn't parse genetic distribution: couldn't parse odds for term %q: %v", term, err)
+				return
+			}
+			if odds == 0 {
+				updErr = fmt.Errorf("couldn't parse genetic distribution: couldn't parse odds for term %q: odds are zero", term)
+				return
+			}
 
-		rslt[g] = odds
+			if err := maybeCreateGS(termSpl[1]); err != nil {
+				updErr = fmt.Errorf("couldn't parse genetic distribution: %v", err)
+				return
+			}
+			g, err := gs.ParseGenotype(strings.TrimSpace(termSpl[1]))
+			if err != nil {
+				updErr = fmt.Errorf("couldn't parse genetic distribution: couldn't parse genotype for term %q: %v", term, err)
+				return
+			}
+			if gd.GetOdds(g) != 0 {
+				updErr = fmt.Errorf("couldn't parse genetic distribution: duplicate genotype %q", gs.RenderGenotype(g))
+				return
+			}
+			gd.SetOdds(g, odds)
+		}
+	})
+	if updErr != nil {
+		return GeneticDistribution{}, GenotypeSerde{}, updErr
 	}
-	return rslt.Reduce(), gs, nil
+	return rslt, gs, nil
 }
 
 func (gs GenotypeSerde) RenderGeneticDistribution(gd GeneticDistribution) string {
 	var sb strings.Builder
 	written := false
 	sb.WriteString("{")
-	for g, p := range gd {
-		if p == 0 {
-			continue
-		}
+	gd.Visit(func(g Genotype, odds uint64) {
 		if written {
 			sb.WriteString(", ")
 		}
-		sb.WriteString(strconv.FormatUint(p, 10))
+		sb.WriteString(strconv.FormatUint(odds, 10))
 		sb.WriteString(":")
-		sb.WriteString(gs.RenderGenotype(Genotype(g)))
+		sb.WriteString(gs.RenderGenotype(g))
 		written = true
-	}
+	})
 	sb.WriteString("}")
 	return sb.String()
 }
 
 // GeneticDistribution represents a probability distribution over all possible genotypes.
-type GeneticDistribution [256]uint64
+type GeneticDistribution struct{ dist [256]uint64 }
+
+var zeroDist [256]uint64
+
+func (gd GeneticDistribution) IsZero() bool { return gd.dist == zeroDist }
+
+func (gd GeneticDistribution) GetOdds(g Genotype) uint64 { return gd.dist[g] }
+
+func (gd GeneticDistribution) Update(f func(*MutableGeneticDistribution)) GeneticDistribution {
+	mgd := &MutableGeneticDistribution{gd.dist}
+	f(mgd)
+	reduce(&mgd.dist)
+	return GeneticDistribution{mgd.dist}
+}
+
+func (gd GeneticDistribution) Visit(f func(_ Genotype, odds uint64)) {
+	for g, p := range gd.dist {
+		if p == 0 {
+			continue
+		}
+		f(Genotype(g), p)
+	}
+}
 
 func (gda GeneticDistribution) Breed(gdb GeneticDistribution) GeneticDistribution {
 	var rslt GeneticDistribution
 
 	// Breed each pair of possible genotypes into the result.
-	for ga, pa := range gda {
+	for ga, pa := range gda.dist {
 		if pa == 0 {
 			continue
 		}
 		ga := Genotype(ga)
-		for gb, pb := range gdb {
+		for gb, pb := range gdb.dist {
 			if pb == 0 {
 				continue
 			}
@@ -315,33 +345,7 @@ func (gda GeneticDistribution) Breed(gdb GeneticDistribution) GeneticDistributio
 			breedInto(&rslt, pa*pb, ga, gb)
 		}
 	}
-	return rslt.Reduce()
-}
-
-func (gd GeneticDistribution) IsZero() bool {
-	var zero GeneticDistribution
-	return gd == zero
-}
-
-func (gd GeneticDistribution) Reduce() GeneticDistribution {
-	rslt := gd
-	if rslt.IsZero() {
-		return rslt
-	}
-
-	g := rslt[0]
-	for _, p := range rslt[1:] {
-		if g == 1 {
-			return rslt
-		}
-		g = gcd(g, p)
-	}
-	if g == 1 {
-		return rslt
-	}
-	for i := range rslt {
-		rslt[i] /= g
-	}
+	reduce(&rslt.dist)
 	return rslt
 }
 
@@ -355,10 +359,35 @@ func breedInto(gd *GeneticDistribution, weight uint64, ga, gb Genotype) {
 		for g1, w1 := range wt1 {
 			for g2, w2 := range wt2 {
 				for g3, w3 := range wt3 {
-					gd[g0|(g1<<2)|(g2<<4)|(g3<<6)] += weight * w0 * w1 * w2 * w3
+					gd.dist[g0|(g1<<2)|(g2<<4)|(g3<<6)] += weight * w0 * w1 * w2 * w3
 				}
 			}
 		}
+	}
+}
+
+type MutableGeneticDistribution struct{ dist [256]uint64 }
+
+func (mgd *MutableGeneticDistribution) GetOdds(g Genotype) uint64       { return mgd.dist[g] }
+func (mgd *MutableGeneticDistribution) SetOdds(g Genotype, odds uint64) { mgd.dist[g] = odds }
+
+func reduce(dist *[256]uint64) {
+	if *dist == zeroDist {
+		return
+	}
+
+	g := dist[0]
+	for _, p := range dist[1:] {
+		if g == 1 {
+			return
+		}
+		g = gcd(g, p)
+	}
+	if g == 1 {
+		return
+	}
+	for i := range dist {
+		dist[i] /= g
 	}
 }
 
