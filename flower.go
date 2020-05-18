@@ -304,9 +304,9 @@ func (gs GenotypeSerde) RenderGeneticDistribution(gd GeneticDistribution) string
 }
 
 // GeneticDistribution represents a probability distribution over all possible genotypes.
-type GeneticDistribution struct{ dist [256]uint64 }
+type GeneticDistribution struct{ dist [81]uint64 }
 
-var zeroDist [256]uint64
+var zeroDist [81]uint64
 
 func (gd GeneticDistribution) IsZero() bool { return gd.dist == zeroDist }
 
@@ -324,7 +324,7 @@ func (gd GeneticDistribution) Visit(f func(_ Genotype, odds uint64)) {
 		if p == 0 {
 			continue
 		}
-		f(Genotype(g), p)
+		f(Genotype(idxToGenotype[g]), p)
 	}
 }
 
@@ -336,12 +336,12 @@ func (gda GeneticDistribution) Breed(gdb GeneticDistribution) GeneticDistributio
 		if pa == 0 {
 			continue
 		}
-		ga := Genotype(ga)
+		ga := Genotype(idxToGenotype[ga])
 		for gb, pb := range gdb.dist {
 			if pb == 0 {
 				continue
 			}
-			gb := Genotype(gb)
+			gb := Genotype(idxToGenotype[gb])
 			breedInto(&rslt, pa*pb, ga, gb)
 		}
 	}
@@ -359,19 +359,22 @@ func breedInto(gd *GeneticDistribution, weight uint64, ga, gb Genotype) {
 		for g1, w1 := range wt1 {
 			for g2, w2 := range wt2 {
 				for g3, w3 := range wt3 {
-					gd.dist[g0|(g1<<2)|(g2<<4)|(g3<<6)] += weight * w0 * w1 * w2 * w3
+					gd.dist[genotypeToIdx[g0|(g1<<2)|(g2<<4)|(g3<<6)]] += weight * w0 * w1 * w2 * w3
 				}
 			}
 		}
 	}
 }
 
-type MutableGeneticDistribution struct{ dist [256]uint64 }
+type MutableGeneticDistribution struct{ dist [81]uint64 }
 
-func (mgd *MutableGeneticDistribution) GetOdds(g Genotype) uint64       { return mgd.dist[g] }
-func (mgd *MutableGeneticDistribution) SetOdds(g Genotype, odds uint64) { mgd.dist[g] = odds }
+func (mgd *MutableGeneticDistribution) GetOdds(g Genotype) uint64 { return mgd.dist[genotypeToIdx[g]] }
 
-func reduce(dist *[256]uint64) {
+func (mgd *MutableGeneticDistribution) SetOdds(g Genotype, odds uint64) {
+	mgd.dist[genotypeToIdx[g]] = odds
+}
+
+func reduce(dist *[81]uint64) {
 	if *dist == zeroDist {
 		return
 	}
@@ -430,7 +433,28 @@ func gcd(u, v uint64) uint64 {
 //
 // Lookup tables & other data only after this point.
 //
+
+func init() {
+	// Initialize idxToGenotype, genotypeToIdx lookup tables.
+	idx := 0
+	for g0 := uint8(0); g0 <= 2; g0++ {
+		for g1 := uint8(0); g1 <= 2; g1++ {
+			for g2 := uint8(0); g2 <= 2; g2++ {
+				for g3 := uint8(0); g3 <= 2; g3++ {
+					g := Genotype(g0 | (g1 << 2) | (g2 << 4) | (g3 << 6))
+					idxToGenotype[idx] = g
+					genotypeToIdx[g] = idx
+					idx++
+				}
+			}
+		}
+	}
+}
+
 var (
+	idxToGenotype [81]Genotype
+	genotypeToIdx [256]int
+
 	// TODO: generate this lookup table from code, to decrease odds of error
 	punnetSquareLookupTable = [3][3][3]uint64{
 		// ga == 0 (rr)
