@@ -30,7 +30,7 @@ func main() {
 	}
 
 	g := breedgraph.NewGraph(tests, []flower.GeneticDistribution{seedWhite, seedYellow, seedRed})
-	for i := 0; i < 3; i++ {
+	for i := 0; i < 4; i++ {
 		fmt.Fprintf(os.Stderr, "Beginning graph expansion step %d...\n", i+1)
 		g.Expand()
 	}

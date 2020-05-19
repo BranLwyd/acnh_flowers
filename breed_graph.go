@@ -2,6 +2,8 @@ package breedgraph
 
 import (
 	"fmt"
+	"runtime"
+	"sync/atomic"
 
 	"github.com/BranLwyd/acnh_flowers/flower"
 )
@@ -44,38 +46,85 @@ func NewGraph(tests map[string]Test, initialFlowers []flower.GeneticDistribution
 
 func (g *Graph) Expand() {
 	initialVertCnt := len(g.verts)
-	for i, pa := range g.verts[:initialVertCnt] {
-		minJ := g.vertFrontier
-		if i > minJ {
-			minJ = i
-		}
-		for _, pb := range g.verts[minJ:initialVertCnt] {
-			gd := pa.gd.Breed(pb.gd)
 
-			for testName, test := range g.tests {
-				gd, cost := test(gd)
-				if gd.IsZero() {
-					// Test can't be applied to this distribution.
-					continue
+	type result struct {
+		edge *edge
+		gd   flower.GeneticDistribution
+	}
+	workCh := make(chan int)
+	rsltCh := make(chan result)
+
+	// Spawn workers.
+	totalWorkerCnt := runtime.GOMAXPROCS(0)
+	workerCnt := int64(totalWorkerCnt)
+	for i := 0; i < totalWorkerCnt; i++ {
+		go func() {
+			defer func() {
+				if atomic.AddInt64(&workerCnt, -1) == 0 {
+					close(rsltCh)
 				}
-				e := &edge{pred: [2]*vertex{pa, pb}, testName: testName, cost: cost}
+			}()
+			for i := range workCh {
+				va := g.verts[i]
+				minJ := g.vertFrontier
+				if i > minJ {
+					minJ = i
+				}
 
-				if v, ok := g.vertMap[gd]; ok {
-					// This vertex already exists. Update lowest-cost if necessary.
-					e.succ = v
-					oldPathCost, newPathCost := v.pathCost(), e.pathCost()
-					if newPathCost < oldPathCost {
-						v.pred = e
+				for _, vb := range g.verts[minJ:initialVertCnt] {
+					gd := va.gd.Breed(vb.gd)
+
+					for testName, test := range g.tests {
+						gd, cost := test(gd)
+						if gd.IsZero() {
+							// Test can't be applied to this distribution.
+							continue
+						}
+						rsltCh <- result{
+							edge: &edge{pred: [2]*vertex{va, vb}, testName: testName, cost: cost},
+							gd:   gd,
+						}
 					}
-					continue
 				}
-
-				// This vertex does not yet exist in the graph.
-				v := &vertex{gd: gd, pred: e}
-				e.succ = v
-				g.verts = append(g.verts, v)
-				g.vertMap[gd] = v
 			}
+		}()
+	}
+
+	// Feed workers and handle results.
+	i := 0
+Loop:
+	for {
+		sendCh := workCh
+		if i >= initialVertCnt {
+			sendCh = nil
+		}
+
+		select {
+		case sendCh <- i:
+			i++
+			if i >= initialVertCnt {
+				close(sendCh)
+			}
+
+		case rslt, ok := <-rsltCh:
+			if !ok {
+				break Loop
+			}
+
+			e, gd := rslt.edge, rslt.gd
+			if v, ok := g.vertMap[gd]; ok {
+				// This vertex already exists. Update lowest-cost if necessary.
+				oldPathCost, newPathCost := v.pathCost(), e.pathCost()
+				if newPathCost < oldPathCost {
+					e.succ, v.pred = v, e
+				}
+				continue Loop
+			}
+			// This vertex does not yet exist in the graph.
+			v := &vertex{gd: rslt.gd}
+			e.succ, v.pred = v, e
+			g.verts = append(g.verts, v)
+			g.vertMap[gd] = v
 		}
 	}
 	g.vertFrontier = initialVertCnt
