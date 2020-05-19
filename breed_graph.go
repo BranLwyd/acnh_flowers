@@ -3,6 +3,7 @@ package breedgraph
 import (
 	"fmt"
 	"runtime"
+	"sync"
 	"sync/atomic"
 
 	"github.com/BranLwyd/acnh_flowers/flower"
@@ -48,84 +49,66 @@ func (g *Graph) Expand() {
 	initialVertCnt := len(g.verts)
 
 	type result struct {
-		edge *edge
-		gd   flower.GeneticDistribution
+		e  *edge
+		gd flower.GeneticDistribution
 	}
-	workCh := make(chan int)
-	rsltCh := make(chan result)
+	rsltsCh := make(chan []result)
+	rsltsPool := &sync.Pool{New: func() interface{} { return []result(nil) }}
 
 	// Spawn workers.
 	totalWorkerCnt := runtime.GOMAXPROCS(0)
 	workerCnt := int64(totalWorkerCnt)
 	for i := 0; i < totalWorkerCnt; i++ {
-		go func() {
+		go func(base int) {
 			defer func() {
 				if atomic.AddInt64(&workerCnt, -1) == 0 {
-					close(rsltCh)
+					close(rsltsCh)
 				}
 			}()
-			for i := range workCh {
+
+			for i := base; i < initialVertCnt; i += totalWorkerCnt {
+				rslts := rsltsPool.Get().([]result)
 				va := g.verts[i]
 				minJ := g.vertFrontier
 				if i > minJ {
 					minJ = i
 				}
-
 				for _, vb := range g.verts[minJ:initialVertCnt] {
 					gd := va.gd.Breed(vb.gd)
-
 					for testName, test := range g.tests {
 						gd, cost := test(gd)
 						if gd.IsZero() {
 							// Test can't be applied to this distribution.
 							continue
 						}
-						rsltCh <- result{
-							edge: &edge{pred: [2]*vertex{va, vb}, testName: testName, cost: cost},
-							gd:   gd,
-						}
+						e := &edge{pred: [2]*vertex{va, vb}, testName: testName, cost: cost}
+						rslts = append(rslts, result{e, gd})
 					}
 				}
+				rsltsCh <- rslts
 			}
-		}()
+		}(i)
 	}
 
-	// Feed workers and handle results.
-	i := 0
-Loop:
-	for {
-		sendCh := workCh
-		if i >= initialVertCnt {
-			sendCh = nil
-		}
-
-		select {
-		case sendCh <- i:
-			i++
-			if i >= initialVertCnt {
-				close(sendCh)
-			}
-
-		case rslt, ok := <-rsltCh:
-			if !ok {
-				break Loop
-			}
-
-			e, gd := rslt.edge, rslt.gd
+	// Handle results.
+	for rslts := range rsltsCh {
+		for _, rslt := range rslts {
+			e, gd := rslt.e, rslt.gd
 			if v, ok := g.vertMap[gd]; ok {
 				// This vertex already exists. Update lowest-cost if necessary.
 				oldPathCost, newPathCost := v.pathCost(), e.pathCost()
 				if newPathCost < oldPathCost {
 					e.succ, v.pred = v, e
 				}
-				continue Loop
+				continue
 			}
 			// This vertex does not yet exist in the graph.
-			v := &vertex{gd: rslt.gd}
+			v := &vertex{gd: gd, pred: e}
 			e.succ, v.pred = v, e
 			g.verts = append(g.verts, v)
 			g.vertMap[gd] = v
 		}
+		rsltsPool.Put(rslts[:0])
 	}
 	g.vertFrontier = initialVertCnt
 }
