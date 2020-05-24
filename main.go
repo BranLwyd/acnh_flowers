@@ -106,7 +106,7 @@ func printDotGraph(s flower.Species, g *breedgraph.Graph, names map[flower.Genet
 
 	// Print edges.
 	g.VisitEdges(func(e breedgraph.Edge) {
-		fmt.Printf(`  {"%s" "%s"} -> "%s" [headlabel="%s"]`, name(e.FirstParent().Value()), name(e.SecondParent().Value()), name(e.Child().Value()), edgeLabel(e.Test().Name(), e.EdgeCost()))
+		fmt.Printf(`  {"%s" "%s"} -> "%s" [label="%s"]`, name(e.FirstParent().Value()), name(e.SecondParent().Value()), name(e.Child().Value()), edgeLabel(e.Test().Name(), e.EdgeCost()))
 		fmt.Println()
 	})
 	fmt.Println("}")
@@ -128,7 +128,7 @@ func printDotGraphPathTo(s flower.Species, v breedgraph.Vertex, names map[flower
 		fmt.Printf(`  "%s"`, name(v.Value()))
 		fmt.Println()
 	}, func(e breedgraph.Edge) {
-		fmt.Printf(`  {"%s" "%s"} -> "%s" [headlabel="%s"]`, name(e.FirstParent().Value()), name(e.SecondParent().Value()), name(e.Child().Value()), edgeLabel(e.Test().Name(), e.EdgeCost()))
+		fmt.Printf(`  {"%s" "%s"} -> "%s" [label="%s"]`, name(e.FirstParent().Value()), name(e.SecondParent().Value()), name(e.Child().Value()), edgeLabel(e.Test().Name(), e.EdgeCost()))
 		fmt.Println()
 	})
 	fmt.Println("}")
