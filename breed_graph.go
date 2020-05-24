@@ -94,10 +94,6 @@ func (g *Graph) Expand(keepPred func(flower.GeneticDistribution) bool) {
 							// Test can't be applied to this distribution.
 							continue
 						}
-						if !keepPred(gd) {
-							// Caller does not want us to keep this result.
-							continue
-						}
 						e := &edge{pred: [2]*vertex{va, vb}, test: test, cost: cost}
 						rslts = append(rslts, result{e, gd})
 					}
@@ -119,7 +115,11 @@ func (g *Graph) Expand(keepPred func(flower.GeneticDistribution) bool) {
 				}
 				continue
 			}
-			// This vertex does not yet exist in the graph.
+			// This vertex does not yet exist in the graph. Create a new vertex, as long as the caller wants to keep it.
+			if !keepPred(gd) {
+				// Caller does not want us to keep this result.
+				continue
+			}
 			v := &vertex{gd: gd, pred: e}
 			e.succ, v.pred = v, e
 			g.verts = append(g.verts, v)
