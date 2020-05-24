@@ -216,8 +216,8 @@ var (
 	NoTest *Test = &Test{"", 0, func(gd flower.GeneticDistribution) (flower.GeneticDistribution, float64) { return gd, 1 }}
 )
 
-func PhenotypeTest(s flower.Species, phenotypes ...string) *Test {
-	validPhenotype := func(phenotype string) bool {
+func PhenotypeTest(s flower.Species, phenotypes ...flower.Phenotype) *Test {
+	validPhenotype := func(phenotype flower.Phenotype) bool {
 		for _, ph := range phenotypes {
 			if phenotype == ph {
 				return true
@@ -226,7 +226,19 @@ func PhenotypeTest(s flower.Species, phenotypes ...string) *Test {
 		return false
 	}
 
-	name := fmt.Sprintf("P∈{%s}", strings.Join(phenotypes, ","))
+	var nameSB strings.Builder
+	nameSB.WriteString("P∈{")
+	written := false
+	for _, p := range phenotypes {
+		if written {
+			nameSB.WriteString(",")
+		}
+		nameSB.WriteString(p.String())
+		written = true
+	}
+	nameSB.WriteString("}")
+	name := nameSB.String()
+
 	priority := len(phenotypes)
 	return &Test{name, priority, func(gd flower.GeneticDistribution) (flower.GeneticDistribution, float64) {
 		var succChances, totalChances uint64
@@ -297,7 +309,7 @@ func PhenotypeTestsUpToSize(s flower.Species, size int) []*Test {
 		}
 
 		for {
-			ps := make([]string, 0, sz)
+			ps := make([]flower.Phenotype, 0, sz)
 			for i := range bits {
 				if bits[i] {
 					ps = append(ps, phenotypes[i])

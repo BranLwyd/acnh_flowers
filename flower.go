@@ -22,7 +22,7 @@ func Windflowers() Species { return windflowers }
 // Species represents a specific species of flower, such as Windflower or Mum.
 type Species struct {
 	name       string        // a human-readable name for this species, e.g. "Windflowers".
-	phenotypes [81]string    // phenotypes by genotype
+	phenotypes [81]Phenotype // phenotypes by genotype
 	serde      GenotypeSerde // the (default) serializer/deserializer for genotypes; also determines gene count
 }
 
@@ -30,10 +30,7 @@ func newSpecies(name string, phenotypes map[string]string) (Species, error) {
 	s := Species{name: name}
 	gsInit := false
 	var gs GenotypeSerde
-	for gStr, p := range phenotypes {
-		if p == "" {
-			return Species{}, fmt.Errorf("genotype %q has missing phenotype", gStr)
-		}
+	for gStr, pStr := range phenotypes {
 		if !gsInit {
 			serde, err := NewGenotypeSerdeFromExample(gStr)
 			if err != nil {
@@ -46,7 +43,11 @@ func newSpecies(name string, phenotypes map[string]string) (Species, error) {
 		if err != nil {
 			return Species{}, err
 		}
-		if s.phenotypes[genotypeToIdx[g]] != "" {
+		p, err := ParsePhenotype(pStr)
+		if err != nil {
+			return Species{}, fmt.Errorf("genotype %q has unparseable phenotype: %v", gStr, err)
+		}
+		if s.phenotypes[genotypeToIdx[g]] != Unknown {
 			return Species{}, fmt.Errorf("genotype %q has multiple phenotypes (%q & %q)", gStr, s.phenotypes[genotypeToIdx[g]], p)
 		}
 		s.phenotypes[genotypeToIdx[g]] = p
@@ -71,16 +72,16 @@ func mustSpecies(name string, phenotypes map[string]string) Species {
 	return s
 }
 
-func (s Species) Name() string                { return s.name }
-func (s Species) GeneCount() int              { return s.serde.GeneCount() }
-func (s Species) Phenotype(g Genotype) string { return s.phenotypes[genotypeToIdx[g]] }
+func (s Species) Name() string                   { return s.name }
+func (s Species) GeneCount() int                 { return s.serde.GeneCount() }
+func (s Species) Phenotype(g Genotype) Phenotype { return s.phenotypes[genotypeToIdx[g]] }
 
-func (s Species) Phenotypes() []string {
-	rsltMap := map[string]struct{}{}
+func (s Species) Phenotypes() []Phenotype {
+	rsltMap := map[Phenotype]struct{}{}
 	for _, p := range s.phenotypes {
 		rsltMap[p] = struct{}{}
 	}
-	var rslt []string
+	var rslt []Phenotype
 	for p := range rsltMap {
 		rslt = append(rslt, p)
 	}
@@ -93,6 +94,72 @@ func (s Species) ParseGenotype(genotype string) (Genotype, error) {
 func (s Species) RenderGenotype(g Genotype) string { return s.serde.RenderGenotype(g) }
 func (s Species) RenderGeneticDistribution(gd GeneticDistribution) string {
 	return s.serde.RenderGeneticDistribution(gd)
+}
+
+// Phenotype represents a specific outward appearance for a species, e.g. Red or Yellow.
+type Phenotype uint8
+
+const (
+	Unknown Phenotype = iota
+	White
+	Pink
+	Red
+	Orange
+	Yellow
+	Green
+	Blue
+	Purple
+	Black
+)
+
+func ParsePhenotype(phenotype string) (Phenotype, error) {
+	switch phenotype {
+	case "White":
+		return White, nil
+	case "Pink":
+		return Pink, nil
+	case "Red":
+		return Red, nil
+	case "Orange":
+		return Orange, nil
+	case "Yellow":
+		return Yellow, nil
+	case "Green":
+		return Green, nil
+	case "Blue":
+		return Blue, nil
+	case "Purple":
+		return Purple, nil
+	case "Black":
+		return Black, nil
+	default:
+		return Unknown, fmt.Errorf("unknown phenotype %q", phenotype)
+	}
+}
+
+func (p Phenotype) String() string {
+	switch p {
+	case White:
+		return "White"
+	case Pink:
+		return "Pink"
+	case Red:
+		return "Red"
+	case Orange:
+		return "Orange"
+	case Yellow:
+		return "Yellow"
+	case Green:
+		return "Green"
+	case Blue:
+		return "Blue"
+	case Purple:
+		return "Purple"
+	case Black:
+		return "Black"
+	default:
+		return fmt.Sprintf("[unknown phenotype ID %d]", p)
+	}
 }
 
 // Genotype represents a specific set of genes for a species, e.g. RrwwYY.
