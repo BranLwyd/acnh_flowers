@@ -70,6 +70,19 @@ func mustSpecies(name string, phenotypes map[string]string) Species {
 func (s Species) Name() string                { return s.name }
 func (s Species) GeneCount() int              { return s.serde.GeneCount() }
 func (s Species) Phenotype(g Genotype) string { return s.phenotypes[g] }
+
+func (s Species) Phenotypes() []string {
+	rsltMap := map[string]struct{}{}
+	for _, p := range s.phenotypes {
+		rsltMap[p] = struct{}{}
+	}
+	var rslt []string
+	for p := range rsltMap {
+		rslt = append(rslt, p)
+	}
+	return rslt
+}
+
 func (s Species) ParseGenotype(genotype string) (Genotype, error) {
 	return s.serde.ParseGenotype(genotype)
 }

@@ -3,6 +3,7 @@ package breedgraph
 import (
 	"fmt"
 	"runtime"
+	"strings"
 	"sync"
 	"sync/atomic"
 
@@ -200,13 +201,23 @@ var (
 	NoTest Test = func(gd flower.GeneticDistribution) (flower.GeneticDistribution, float64) { return gd, 1 }
 )
 
-func PhenotypeTest(s flower.Species, phenotype string) Test {
+func PhenotypeTest(s flower.Species, phenotypes ...string) (_ Test, name string) {
+	validPhenotype := func(phenotype string) bool {
+		for _, ph := range phenotypes {
+			if phenotype == ph {
+				return true
+			}
+		}
+		return false
+	}
+
+	name = fmt.Sprintf("P∈{%s}", strings.Join(phenotypes, ","))
 	return func(gd flower.GeneticDistribution) (flower.GeneticDistribution, float64) {
 		var succChances, totalChances uint64
 		rslt := gd.Update(func(mgd *flower.MutableGeneticDistribution) {
 			gd.Visit(func(g flower.Genotype, p uint64) {
 				totalChances += p
-				if s.Phenotype(g) == phenotype {
+				if validPhenotype(s.Phenotype(g)) {
 					succChances += p
 				} else {
 					mgd.SetOdds(g, 0)
@@ -218,7 +229,72 @@ func PhenotypeTest(s flower.Species, phenotype string) Test {
 			return flower.GeneticDistribution{}, 0
 		}
 		return rslt, float64(totalChances) / float64(succChances)
+	}, name
+}
+
+func PhenotypeTests(s flower.Species) map[string]Test {
+	const maxInt = int(^uint(0) >> 1)
+	return PhenotypeTestsUpToSize(s, maxInt)
+}
+
+func PhenotypeTestsUpToSize(s flower.Species, size int) map[string]Test {
+	phenotypes := s.Phenotypes()
+	if size >= len(phenotypes) {
+		size = len(phenotypes) - 1
 	}
+
+	bits := make([]bool, len(phenotypes))
+	var next func([]bool) bool
+	next = func(bits []bool) bool {
+		// Find lowest-order set bit.
+		i := 0
+		for i < len(bits) && !bits[i] {
+			i++
+		}
+		if i == len(bits) {
+			// No bits set at all? Can't increment.
+			return false
+		}
+
+		bits[i] = false
+		switch {
+		case i == len(bits)-1:
+			// The first bit set was the highest-order bit, so we can't increment any further.
+			return false
+		case !bits[i+1]:
+			// The next-higher bit is not already set: just set it. We can try to increment again.
+			bits[i+1] = true
+			return true
+		default:
+			// The next-higher bit is already set: set the lowest-order bit and increment the remainder.
+			bits[0] = true
+			return next(bits[1:])
+		}
+	}
+
+	rslt := map[string]Test{}
+	for sz := 1; sz <= size; sz++ {
+		// Initialize bits (first `sz` bits set).
+		for i := range bits {
+			bits[i] = (i < sz)
+		}
+
+		for {
+			ps := make([]string, 0, sz)
+			for i := range bits {
+				if bits[i] {
+					ps = append(ps, phenotypes[i])
+				}
+			}
+			test, name := PhenotypeTest(s, ps...)
+			rslt[name] = test
+
+			if !next(bits) {
+				break
+			}
+		}
+	}
+	return rslt
 }
 
 type Vertex struct{ v *vertex }

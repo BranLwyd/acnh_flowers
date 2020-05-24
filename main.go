@@ -17,16 +17,9 @@ func main() {
 	blueRoses := must(roses.ParseGenotype("RRYYwwss")).ToGeneticDistribution()
 
 	// Breeding tests.
-	tests := map[string]breedgraph.Test{
-		"":       breedgraph.NoTest,
-		"Black":  breedgraph.PhenotypeTest(roses, "Black"),
-		"Blue":   breedgraph.PhenotypeTest(roses, "Blue"),
-		"Orange": breedgraph.PhenotypeTest(roses, "Orange"),
-		"Pink":   breedgraph.PhenotypeTest(roses, "Pink"),
-		"Purple": breedgraph.PhenotypeTest(roses, "Purple"),
-		"Red":    breedgraph.PhenotypeTest(roses, "Red"),
-		"White":  breedgraph.PhenotypeTest(roses, "White"),
-		"Yellow": breedgraph.PhenotypeTest(roses, "Yellow"),
+	tests := map[string]breedgraph.Test{"": breedgraph.NoTest}
+	for name, test := range breedgraph.PhenotypeTests(roses) {
+		tests[name] = test
 	}
 
 	g := breedgraph.NewGraph(tests, []flower.GeneticDistribution{seedWhite, seedYellow, seedRed})
@@ -131,7 +124,7 @@ func printDotGraphPathTo(s flower.Species, v breedgraph.Vertex, names map[flower
 
 func edgeLabel(test string, cost float64) string {
 	if test != "" {
-		return fmt.Sprintf("%s(%.2f)", test, cost)
+		return fmt.Sprintf("%s (%.2f)", test, cost)
 	}
 	return fmt.Sprintf("%.02f", cost)
 }
