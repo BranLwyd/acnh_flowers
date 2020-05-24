@@ -21,17 +21,19 @@ func Windflowers() Species { return windflowers }
 
 // Species represents a specific species of flower, such as Windflower or Mum.
 type Species struct {
-	name       string              // a human-readable name for this species, e.g. "Windflowers".
-	phenotypes map[Genotype]string // phenotypes by genotype
-	serde      GenotypeSerde       // the (default) serializer/deserializer for genotypes; also determines gene count
+	name       string        // a human-readable name for this species, e.g. "Windflowers".
+	phenotypes [81]string    // phenotypes by genotype
+	serde      GenotypeSerde // the (default) serializer/deserializer for genotypes; also determines gene count
 }
 
 func newSpecies(name string, phenotypes map[string]string) (Species, error) {
 	s := Species{name: name}
 	gsInit := false
 	var gs GenotypeSerde
-	pts := map[Genotype]string{}
 	for gStr, p := range phenotypes {
+		if p == "" {
+			return Species{}, fmt.Errorf("genotype %q has missing phenotype", gStr)
+		}
 		if !gsInit {
 			serde, err := NewGenotypeSerdeFromExample(gStr)
 			if err != nil {
@@ -44,15 +46,17 @@ func newSpecies(name string, phenotypes map[string]string) (Species, error) {
 		if err != nil {
 			return Species{}, err
 		}
-		pts[g] = p
+		if s.phenotypes[genotypeToIdx[g]] != "" {
+			return Species{}, fmt.Errorf("genotype %q has multiple phenotypes (%q & %q)", gStr, s.phenotypes[genotypeToIdx[g]], p)
+		}
+		s.phenotypes[genotypeToIdx[g]] = p
 	}
-	s.phenotypes = pts
 	s.serde = gs
 
-	if gs.GeneCount() == 3 && len(s.phenotypes) != 27 {
+	if gs.GeneCount() == 3 && len(phenotypes) != 27 {
 		return Species{}, fmt.Errorf("got %d phenotypes, expected 27", len(phenotypes))
 	}
-	if gs.GeneCount() == 4 && len(s.phenotypes) != 81 {
+	if gs.GeneCount() == 4 && len(phenotypes) != 81 {
 		return Species{}, fmt.Errorf("got %d phenotypes, expected 81", len(phenotypes))
 	}
 
@@ -69,7 +73,7 @@ func mustSpecies(name string, phenotypes map[string]string) Species {
 
 func (s Species) Name() string                { return s.name }
 func (s Species) GeneCount() int              { return s.serde.GeneCount() }
-func (s Species) Phenotype(g Genotype) string { return s.phenotypes[g] }
+func (s Species) Phenotype(g Genotype) string { return s.phenotypes[genotypeToIdx[g]] }
 
 func (s Species) Phenotypes() []string {
 	rsltMap := map[string]struct{}{}
@@ -465,35 +469,6 @@ func init() {
 			}
 		}
 	}
-}
-
-var (
-	idxToGenotype [81]Genotype
-	genotypeToIdx [256]int
-
-	// TODO: generate this lookup table from code, to decrease odds of error
-	punnetSquareLookupTable = [3][3][3]uint64{
-		// ga == 0 (rr)
-		[3][3]uint64{
-			[3]uint64{4, 0, 0},
-			[3]uint64{2, 2, 0},
-			[3]uint64{0, 4, 0},
-		},
-
-		// ga = 1 (Rr)
-		[3][3]uint64{
-			[3]uint64{2, 2, 0},
-			[3]uint64{1, 2, 1},
-			[3]uint64{0, 2, 2},
-		},
-
-		// ga = 2 (RR)
-		[3][3]uint64{
-			[3]uint64{0, 4, 0},
-			[3]uint64{0, 2, 2},
-			[3]uint64{0, 0, 4},
-		},
-	}
 
 	cosmos = mustSpecies("Cosmos", map[string]string{
 		"rryyss": "White",
@@ -788,4 +763,42 @@ var (
 		"RROOWw": "Pink",
 		"RROOww": "Purple",
 	})
+}
+
+var (
+	idxToGenotype [81]Genotype
+	genotypeToIdx [256]int
+
+	// TODO: generate this lookup table from code, to decrease odds of error
+	punnetSquareLookupTable = [3][3][3]uint64{
+		// ga == 0 (rr)
+		[3][3]uint64{
+			[3]uint64{4, 0, 0},
+			[3]uint64{2, 2, 0},
+			[3]uint64{0, 4, 0},
+		},
+
+		// ga = 1 (Rr)
+		[3][3]uint64{
+			[3]uint64{2, 2, 0},
+			[3]uint64{1, 2, 1},
+			[3]uint64{0, 2, 2},
+		},
+
+		// ga = 2 (RR)
+		[3][3]uint64{
+			[3]uint64{0, 4, 0},
+			[3]uint64{0, 2, 2},
+			[3]uint64{0, 0, 4},
+		},
+	}
+
+	cosmos      Species
+	hyacinths   Species
+	lilies      Species
+	mums        Species
+	pansies     Species
+	roses       Species
+	tulips      Species
+	windflowers Species
 )
