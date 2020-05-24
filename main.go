@@ -8,6 +8,10 @@ import (
 	"github.com/BranLwyd/acnh_flowers/flower"
 )
 
+const (
+	expandSteps = 3
+)
+
 func main() {
 	// Initial flowers.
 	roses := flower.Roses()
@@ -16,20 +20,7 @@ func main() {
 	seedRed := must(roses.ParseGenotype("RRyyWWSs")).ToGeneticDistribution()
 	blueRoses := must(roses.ParseGenotype("RRYYwwss")).ToGeneticDistribution()
 
-	// Breeding tests.
-	tests := map[string]breedgraph.Test{"": breedgraph.NoTest}
-	for name, test := range breedgraph.PhenotypeTests(roses) {
-		tests[name] = test
-	}
-
-	g := breedgraph.NewGraph(tests, []flower.GeneticDistribution{seedWhite, seedYellow, seedRed})
-	for i := 0; i < 3; i++ {
-		fmt.Fprintf(os.Stderr, "Beginning graph expansion step %d...\n", i+1)
-		g.Expand()
-	}
-
-	// Find candidate distribution, or fail out if this is impossible.
-	candidate, ok := g.Search(func(gd flower.GeneticDistribution) bool {
+	candidatePredicate := func(gd flower.GeneticDistribution) bool {
 		isSuitable := true
 		gd.Visit(func(g flower.Genotype, _ uint64) {
 			if roses.Phenotype(g) != "Blue" {
@@ -37,7 +28,29 @@ func main() {
 			}
 		})
 		return isSuitable
-	})
+	}
+
+	// Breeding tests.
+	tests := map[string]breedgraph.Test{"": breedgraph.NoTest}
+	for name, test := range breedgraph.PhenotypeTests(roses) {
+		tests[name] = test
+	}
+
+	g := breedgraph.NewGraph(tests, []flower.GeneticDistribution{seedWhite, seedYellow, seedRed})
+	for i := 0; i < expandSteps; i++ {
+		fmt.Fprintf(os.Stderr, "Beginning graph expansion step %d...\n", i+1)
+		keepPred := func(flower.GeneticDistribution) bool { return true }
+		if i == expandSteps-1 {
+			// On the last step, keep only if it's a solution
+			// candidate, since we won't be expanding any more from
+			// it.
+			keepPred = candidatePredicate
+		}
+		g.Expand(keepPred)
+	}
+
+	// Find candidate distribution, or fail out if this is impossible.
+	candidate, ok := g.Search(candidatePredicate)
 	if !ok {
 		fmt.Fprintf(os.Stderr, "No blue roses possible.\n")
 		os.Exit(1)

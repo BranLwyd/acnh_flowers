@@ -58,7 +58,7 @@ func (g *Graph) Search(pred func(flower.GeneticDistribution) bool) (_ Vertex, ok
 	return Vertex{rslt}, rslt != nil
 }
 
-func (g *Graph) Expand() {
+func (g *Graph) Expand(keepPred func(flower.GeneticDistribution) bool) {
 	initialVertCnt := len(g.verts)
 
 	type result struct {
@@ -92,6 +92,10 @@ func (g *Graph) Expand() {
 						gd, cost := test(gd)
 						if gd.IsZero() {
 							// Test can't be applied to this distribution.
+							continue
+						}
+						if !keepPred(gd) {
+							// Caller does not want us to keep this result.
 							continue
 						}
 						e := &edge{pred: [2]*vertex{va, vb}, testName: testName, cost: cost}
