@@ -22,10 +22,11 @@ func main() {
 
 	candidatePredicate := func(gd flower.GeneticDistribution) bool {
 		isSuitable := true
-		gd.Visit(func(g flower.Genotype, _ uint64) {
+		gd.Visit(func(g flower.Genotype, _ uint64) bool {
 			if roses.Phenotype(g) != "Blue" {
 				isSuitable = false
 			}
+			return isSuitable
 		})
 		return isSuitable
 	}

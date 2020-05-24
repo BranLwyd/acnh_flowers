@@ -303,7 +303,7 @@ func (gs GenotypeSerde) RenderGeneticDistribution(gd GeneticDistribution) string
 	var sb strings.Builder
 	written := false
 	sb.WriteString("{")
-	gd.Visit(func(g Genotype, odds uint64) {
+	gd.Visit(func(g Genotype, odds uint64) bool {
 		if written {
 			sb.WriteString(", ")
 		}
@@ -311,6 +311,7 @@ func (gs GenotypeSerde) RenderGeneticDistribution(gd GeneticDistribution) string
 		sb.WriteString(":")
 		sb.WriteString(gs.RenderGenotype(g))
 		written = true
+		return true
 	})
 	sb.WriteString("}")
 	return sb.String()
@@ -332,12 +333,14 @@ func (gd GeneticDistribution) Update(f func(*MutableGeneticDistribution)) Geneti
 	return GeneticDistribution{mgd.dist}
 }
 
-func (gd GeneticDistribution) Visit(f func(_ Genotype, odds uint64)) {
+func (gd GeneticDistribution) Visit(f func(_ Genotype, odds uint64) bool) {
 	for g, p := range gd.dist {
 		if p == 0 {
 			continue
 		}
-		f(Genotype(idxToGenotype[g]), p)
+		if !f(Genotype(idxToGenotype[g]), p) {
+			break
+		}
 	}
 }
 

@@ -231,13 +231,14 @@ func PhenotypeTest(s flower.Species, phenotypes ...string) *Test {
 	return &Test{name, priority, func(gd flower.GeneticDistribution) (flower.GeneticDistribution, float64) {
 		var succChances, totalChances uint64
 		rslt := gd.Update(func(mgd *flower.MutableGeneticDistribution) {
-			gd.Visit(func(g flower.Genotype, p uint64) {
+			gd.Visit(func(g flower.Genotype, p uint64) bool {
 				totalChances += p
 				if validPhenotype(s.Phenotype(g)) {
 					succChances += p
 				} else {
 					mgd.SetOdds(g, 0)
 				}
+				return true
 			})
 		})
 		if succChances == 0 {
