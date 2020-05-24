@@ -442,11 +442,20 @@ func breedInto(gd *GeneticDistribution, weight uint64, ga, gb Genotype) {
 	wt2 := punnetSquareLookupTable[ga.gene2()][gb.gene2()]
 	wt3 := punnetSquareLookupTable[ga.gene3()][gb.gene3()]
 
+	wt := weight
 	for g0, w0 := range wt0 {
+		g := g0
+		wt := wt * w0
 		for g1, w1 := range wt1 {
+			g := g | (g1 << 2)
+			wt := wt * w1
 			for g2, w2 := range wt2 {
+				g := g | (g2 << 4)
+				wt := wt * w2
 				for g3, w3 := range wt3 {
-					gd.dist[genotypeToIdx[g0|(g1<<2)|(g2<<4)|(g3<<6)]] += weight * w0 * w1 * w2 * w3
+					g := g | (g3 << 6)
+					wt := wt * w3
+					gd.dist[genotypeToIdx[g]] += wt
 				}
 			}
 		}
