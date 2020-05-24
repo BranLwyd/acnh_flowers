@@ -31,10 +31,8 @@ func main() {
 	}
 
 	// Breeding tests.
-	tests := map[string]breedgraph.Test{"": breedgraph.NoTest}
-	for name, test := range breedgraph.PhenotypeTests(roses) {
-		tests[name] = test
-	}
+	tests := []*breedgraph.Test{breedgraph.NoTest}
+	tests = append(tests, breedgraph.PhenotypeTests(roses)...)
 
 	g := breedgraph.NewGraph(tests, []flower.GeneticDistribution{seedWhite, seedYellow, seedRed})
 	for i := 0; i < expandSteps; i++ {
@@ -82,7 +80,7 @@ func printGraph(s flower.Species, g *breedgraph.Graph, names map[flower.GeneticD
 
 	fmt.Println("Lineage:")
 	g.VisitEdges(func(e breedgraph.Edge) {
-		fmt.Printf("  %s and %s make %s [test = %q, cost = %.02f]\n", name(e.FirstParent().Value()), name(e.SecondParent().Value()), name(e.Child().Value()), e.TestName(), e.EdgeCost())
+		fmt.Printf("  %s and %s make %s [test = %q, cost = %.02f]\n", name(e.FirstParent().Value()), name(e.SecondParent().Value()), name(e.Child().Value()), e.Test().Name(), e.EdgeCost())
 	})
 
 }
@@ -107,7 +105,7 @@ func printDotGraph(s flower.Species, g *breedgraph.Graph, names map[flower.Genet
 
 	// Print edges.
 	g.VisitEdges(func(e breedgraph.Edge) {
-		fmt.Printf(`  {"%s" "%s"} -> "%s" [headlabel="%s"]`, name(e.FirstParent().Value()), name(e.SecondParent().Value()), name(e.Child().Value()), edgeLabel(e.TestName(), e.EdgeCost()))
+		fmt.Printf(`  {"%s" "%s"} -> "%s" [headlabel="%s"]`, name(e.FirstParent().Value()), name(e.SecondParent().Value()), name(e.Child().Value()), edgeLabel(e.Test().Name(), e.EdgeCost()))
 		fmt.Println()
 	})
 	fmt.Println("}")
@@ -129,7 +127,7 @@ func printDotGraphPathTo(s flower.Species, v breedgraph.Vertex, names map[flower
 		fmt.Printf(`  "%s"`, name(v.Value()))
 		fmt.Println()
 	}, func(e breedgraph.Edge) {
-		fmt.Printf(`  {"%s" "%s"} -> "%s" [headlabel="%s"]`, name(e.FirstParent().Value()), name(e.SecondParent().Value()), name(e.Child().Value()), edgeLabel(e.TestName(), e.EdgeCost()))
+		fmt.Printf(`  {"%s" "%s"} -> "%s" [headlabel="%s"]`, name(e.FirstParent().Value()), name(e.SecondParent().Value()), name(e.Child().Value()), edgeLabel(e.Test().Name(), e.EdgeCost()))
 		fmt.Println()
 	})
 	fmt.Println("}")

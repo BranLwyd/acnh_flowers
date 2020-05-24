@@ -11,7 +11,7 @@ import (
 )
 
 type Graph struct {
-	tests map[string]Test
+	tests []*Test
 
 	verts        []*vertex
 	vertMap      map[flower.GeneticDistribution]*vertex
@@ -27,11 +27,11 @@ type edge struct {
 	pred [2]*vertex
 	succ *vertex
 
-	testName string
-	cost     float64
+	test *Test
+	cost float64
 }
 
-func NewGraph(tests map[string]Test, initialFlowers []flower.GeneticDistribution) *Graph {
+func NewGraph(tests []*Test, initialFlowers []flower.GeneticDistribution) *Graph {
 	verts := make([]*vertex, len(initialFlowers))
 	vertMap := map[flower.GeneticDistribution]*vertex{}
 	for i, gd := range initialFlowers {
@@ -88,8 +88,8 @@ func (g *Graph) Expand(keepPred func(flower.GeneticDistribution) bool) {
 				}
 				for _, vb := range g.verts[minJ:initialVertCnt] {
 					gd := va.gd.Breed(vb.gd)
-					for testName, test := range g.tests {
-						gd, cost := test(gd)
+					for _, test := range g.tests {
+						gd, cost := test.Test(gd)
 						if gd.IsZero() {
 							// Test can't be applied to this distribution.
 							continue
@@ -98,7 +98,7 @@ func (g *Graph) Expand(keepPred func(flower.GeneticDistribution) bool) {
 							// Caller does not want us to keep this result.
 							continue
 						}
-						e := &edge{pred: [2]*vertex{va, vb}, testName: testName, cost: cost}
+						e := &edge{pred: [2]*vertex{va, vb}, test: test, cost: cost}
 						rslts = append(rslts, result{e, gd})
 					}
 				}
@@ -114,7 +114,7 @@ func (g *Graph) Expand(keepPred func(flower.GeneticDistribution) bool) {
 			if v, ok := g.vertMap[gd]; ok {
 				// This vertex already exists. Update lowest-cost if necessary.
 				oldPathCost, newPathCost := v.pathCost(), e.pathCost()
-				if newPathCost < oldPathCost {
+				if newPathCost < oldPathCost || (newPathCost == oldPathCost && e.test.Priority() < v.pred.test.Priority()) {
 					e.succ, v.pred = v, e
 				}
 				continue
@@ -199,13 +199,24 @@ func visitSubgraphPathingToAllOf(vertsAndEdges []interface{}, f func(interface{}
 	}
 }
 
-type Test func(flower.GeneticDistribution) (_ flower.GeneticDistribution, cost float64)
+type Test struct {
+	name     string
+	priority int
+	test     func(flower.GeneticDistribution) (_ flower.GeneticDistribution, cost float64)
+}
+
+func (t *Test) Name() string  { return t.name }
+func (t *Test) Priority() int { return t.priority }
+
+func (t *Test) Test(gd flower.GeneticDistribution) (_ flower.GeneticDistribution, cost float64) {
+	return t.test(gd)
+}
 
 var (
-	NoTest Test = func(gd flower.GeneticDistribution) (flower.GeneticDistribution, float64) { return gd, 1 }
+	NoTest *Test = &Test{"", 0, func(gd flower.GeneticDistribution) (flower.GeneticDistribution, float64) { return gd, 1 }}
 )
 
-func PhenotypeTest(s flower.Species, phenotypes ...string) (_ Test, name string) {
+func PhenotypeTest(s flower.Species, phenotypes ...string) *Test {
 	validPhenotype := func(phenotype string) bool {
 		for _, ph := range phenotypes {
 			if phenotype == ph {
@@ -215,8 +226,9 @@ func PhenotypeTest(s flower.Species, phenotypes ...string) (_ Test, name string)
 		return false
 	}
 
-	name = fmt.Sprintf("P∈{%s}", strings.Join(phenotypes, ","))
-	return func(gd flower.GeneticDistribution) (flower.GeneticDistribution, float64) {
+	name := fmt.Sprintf("P∈{%s}", strings.Join(phenotypes, ","))
+	priority := len(phenotypes)
+	return &Test{name, priority, func(gd flower.GeneticDistribution) (flower.GeneticDistribution, float64) {
 		var succChances, totalChances uint64
 		rslt := gd.Update(func(mgd *flower.MutableGeneticDistribution) {
 			gd.Visit(func(g flower.Genotype, p uint64) {
@@ -233,15 +245,15 @@ func PhenotypeTest(s flower.Species, phenotypes ...string) (_ Test, name string)
 			return flower.GeneticDistribution{}, 0
 		}
 		return rslt, float64(totalChances) / float64(succChances)
-	}, name
+	}}
 }
 
-func PhenotypeTests(s flower.Species) map[string]Test {
+func PhenotypeTests(s flower.Species) []*Test {
 	const maxInt = int(^uint(0) >> 1)
 	return PhenotypeTestsUpToSize(s, maxInt)
 }
 
-func PhenotypeTestsUpToSize(s flower.Species, size int) map[string]Test {
+func PhenotypeTestsUpToSize(s flower.Species, size int) []*Test {
 	phenotypes := s.Phenotypes()
 	if size >= len(phenotypes) {
 		size = len(phenotypes) - 1
@@ -276,7 +288,7 @@ func PhenotypeTestsUpToSize(s flower.Species, size int) map[string]Test {
 		}
 	}
 
-	rslt := map[string]Test{}
+	rslt := []*Test{}
 	for sz := 1; sz <= size; sz++ {
 		// Initialize bits (first `sz` bits set).
 		for i := range bits {
@@ -290,9 +302,7 @@ func PhenotypeTestsUpToSize(s flower.Species, size int) map[string]Test {
 					ps = append(ps, phenotypes[i])
 				}
 			}
-			test, name := PhenotypeTest(s, ps...)
-			rslt[name] = test
-
+			rslt = append(rslt, PhenotypeTest(s, ps...))
 			if !next(bits) {
 				break
 			}
@@ -335,6 +345,6 @@ func (e Edge) IsZero() bool         { return e.e == nil }
 func (e Edge) FirstParent() Vertex  { return Vertex{e.e.pred[0]} }
 func (e Edge) SecondParent() Vertex { return Vertex{e.e.pred[1]} }
 func (e Edge) Child() Vertex        { return Vertex{e.e.succ} }
-func (e Edge) TestName() string     { return e.e.testName }
+func (e Edge) Test() *Test          { return e.e.test }
 func (e Edge) EdgeCost() float64    { return e.e.cost }
 func (e Edge) PathCost() float64    { return e.e.pathCost() }
