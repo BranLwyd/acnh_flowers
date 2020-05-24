@@ -45,6 +45,18 @@ func NewGraph(tests map[string]Test, initialFlowers []flower.GeneticDistribution
 	}
 }
 
+func (g *Graph) Search(pred func(flower.GeneticDistribution) bool) (_ Vertex, ok bool) {
+	var rslt *vertex
+	for _, v := range g.verts {
+		if pred(v.gd) {
+			if rslt == nil || v.pathCost() < rslt.pathCost() {
+				rslt = v
+			}
+		}
+	}
+	return Vertex{rslt}, rslt != nil
+}
+
 func (g *Graph) Expand() {
 	initialVertCnt := len(g.verts)
 

@@ -30,31 +30,22 @@ func main() {
 	}
 
 	g := breedgraph.NewGraph(tests, []flower.GeneticDistribution{seedWhite, seedYellow, seedRed})
-	for i := 0; i < 4; i++ {
+	for i := 0; i < 3; i++ {
 		fmt.Fprintf(os.Stderr, "Beginning graph expansion step %d...\n", i+1)
 		g.Expand()
 	}
 
 	// Find candidate distribution, or fail out if this is impossible.
-	var candidate breedgraph.Vertex
-	g.VisitVertices(func(v breedgraph.Vertex) {
+	candidate, ok := g.Search(func(gd flower.GeneticDistribution) bool {
 		isSuitable := true
-		// Is this a suitable candidate?
-		v.Value().Visit(func(g flower.Genotype, p uint64) {
-			if roses.Phenotype(flower.Genotype(g)) != "Blue" {
+		gd.Visit(func(g flower.Genotype, _ uint64) {
+			if roses.Phenotype(g) != "Blue" {
 				isSuitable = false
 			}
 		})
-		if !isSuitable {
-			return
-		}
-
-		// It is a suitable candidate. Is it the cheapeast candidate we've found so far?
-		if candidate.IsZero() || v.PathCost() < candidate.PathCost() {
-			candidate = v
-		}
+		return isSuitable
 	})
-	if candidate.IsZero() {
+	if !ok {
 		fmt.Fprintf(os.Stderr, "No blue roses possible.\n")
 		os.Exit(1)
 	}
