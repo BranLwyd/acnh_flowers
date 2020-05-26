@@ -429,37 +429,34 @@ func (gda GeneticDistribution) Breed(gdb GeneticDistribution) GeneticDistributio
 				continue
 			}
 			gb := Genotype(idxToGenotype[gb])
-			breedInto(&rslt, pa*pb, ga, gb)
-		}
-	}
-	reduce(&rslt.dist)
-	return rslt
-}
 
-func breedInto(gd *GeneticDistribution, weight uint64, ga, gb Genotype) {
-	wt0 := punnetSquareLookupTable[ga.gene0()][gb.gene0()]
-	wt1 := punnetSquareLookupTable[ga.gene1()][gb.gene1()]
-	wt2 := punnetSquareLookupTable[ga.gene2()][gb.gene2()]
-	wt3 := punnetSquareLookupTable[ga.gene3()][gb.gene3()]
+			wt0 := punnetSquareLookupTable[ga.gene0()][gb.gene0()]
+			wt1 := punnetSquareLookupTable[ga.gene1()][gb.gene1()]
+			wt2 := punnetSquareLookupTable[ga.gene2()][gb.gene2()]
+			wt3 := punnetSquareLookupTable[ga.gene3()][gb.gene3()]
 
-	wt := weight
-	for g0, w0 := range wt0 {
-		g := g0
-		wt := wt * w0
-		for g1, w1 := range wt1 {
-			g := g | (g1 << 2)
-			wt := wt * w1
-			for g2, w2 := range wt2 {
-				g := g | (g2 << 4)
-				wt := wt * w2
-				for g3, w3 := range wt3 {
-					g := g | (g3 << 6)
-					wt := wt * w3
-					gd.dist[genotypeToIdx[g]] += wt
+			wt := pa * pb
+			for g0, w0 := range wt0 {
+				g := g0
+				wt := wt * w0
+				for g1, w1 := range wt1 {
+					g := g | (g1 << 2)
+					wt := wt * w1
+					for g2, w2 := range wt2 {
+						g := g | (g2 << 4)
+						wt := wt * w2
+						for g3, w3 := range wt3 {
+							g := g | (g3 << 6)
+							wt := wt * w3
+							rslt.dist[genotypeToIdx[g]] += wt
+						}
+					}
 				}
 			}
 		}
 	}
+	reduce(&rslt.dist)
+	return rslt
 }
 
 type MutableGeneticDistribution struct{ dist [81]uint64 }
