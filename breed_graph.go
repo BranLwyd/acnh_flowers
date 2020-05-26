@@ -62,8 +62,9 @@ func (g *Graph) Expand(keepPred func(flower.GeneticDistribution) bool) {
 	initialVertCnt := len(g.verts)
 
 	type result struct {
-		e  *edge
-		gd flower.GeneticDistribution
+		e    *edge
+		gd   flower.GeneticDistribution
+		keep bool
 	}
 	rsltsCh := make(chan []result)
 	rsltsPool := &sync.Pool{New: func() interface{} { return []result(nil) }}
@@ -95,7 +96,7 @@ func (g *Graph) Expand(keepPred func(flower.GeneticDistribution) bool) {
 							continue
 						}
 						e := &edge{pred: [2]*vertex{va, vb}, test: test, cost: cost}
-						rslts = append(rslts, result{e, gd})
+						rslts = append(rslts, result{e, gd, keepPred(gd)})
 					}
 				}
 				rsltsCh <- rslts
@@ -106,7 +107,7 @@ func (g *Graph) Expand(keepPred func(flower.GeneticDistribution) bool) {
 	// Handle results.
 	for rslts := range rsltsCh {
 		for _, rslt := range rslts {
-			e, gd := rslt.e, rslt.gd
+			e, gd, keep := rslt.e, rslt.gd, rslt.keep
 			if v, ok := g.vertMap[gd]; ok {
 				// This vertex already exists. Update lowest-cost if necessary.
 				oldPathCost, newPathCost := v.pathCost(), e.pathCost()
@@ -115,8 +116,9 @@ func (g *Graph) Expand(keepPred func(flower.GeneticDistribution) bool) {
 				}
 				continue
 			}
+
 			// This vertex does not yet exist in the graph. Create a new vertex, as long as the caller wants to keep it.
-			if !keepPred(gd) {
+			if !keep {
 				// Caller does not want us to keep this result.
 				continue
 			}
