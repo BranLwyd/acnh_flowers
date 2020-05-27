@@ -9,7 +9,7 @@ import (
 )
 
 const (
-	expandSteps = 3
+	expandSteps = 4
 )
 
 func main() {
@@ -18,12 +18,13 @@ func main() {
 	seedWhite := must(roses.ParseGenotype("rryyWwss")).ToGeneticDistribution()
 	seedYellow := must(roses.ParseGenotype("rrYYWWss")).ToGeneticDistribution()
 	seedRed := must(roses.ParseGenotype("RRyyWWSs")).ToGeneticDistribution()
-	blueRoses := must(roses.ParseGenotype("RRYYwwss")).ToGeneticDistribution()
+	blueRoseGeno := must(roses.ParseGenotype("RRYYwwss"))
+	blueRose := blueRoseGeno.ToGeneticDistribution()
 
 	candidatePredicate := func(gd flower.GeneticDistribution) bool {
 		isSuitable := true
 		gd.Visit(func(g flower.Genotype, _ uint64) bool {
-			if roses.Phenotype(g) != flower.Blue {
+			if g != blueRoseGeno {
 				isSuitable = false
 			}
 			return isSuitable
@@ -33,7 +34,7 @@ func main() {
 
 	// Breeding tests.
 	tests := []*breedgraph.Test{breedgraph.NoTest}
-	tests = append(tests, breedgraph.PhenotypeTests(roses)...)
+	tests = append(tests, breedgraph.PhenotypeTestsUpToSize(roses, 1)...)
 
 	g := breedgraph.NewGraph(tests, []flower.GeneticDistribution{seedWhite, seedYellow, seedRed})
 	for i := 0; i < expandSteps; i++ {
@@ -51,7 +52,7 @@ func main() {
 	// Find candidate distribution, or fail out if this is impossible.
 	candidate, ok := g.Search(candidatePredicate)
 	if !ok {
-		fmt.Fprintf(os.Stderr, "No blue roses possible.\n")
+		fmt.Fprintf(os.Stderr, "No solution possible.\n")
 		os.Exit(1)
 	}
 
@@ -60,7 +61,7 @@ func main() {
 	names[seedWhite] = "Seed White (rryyWwss)"
 	names[seedYellow] = "Seed Yellow (rrYYWWss)"
 	names[seedRed] = "Seed Red (RRyyWWSs)"
-	names[blueRoses] = "Blue Roses (RRYYwwss)"
+	names[blueRose] = "Blue Roses (RRYYwwss)"
 	printDotGraphPathTo(roses, candidate, names)
 }
 
